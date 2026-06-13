@@ -3,6 +3,8 @@ from pathlib import Path
 import os
 import random
 import re
+import ssl
+from urllib.parse import unquote, urlparse
 
 try:
     import psycopg2
@@ -10,6 +12,11 @@ try:
 except ImportError:  # PostgreSQL is enabled only when DATABASE_URL is set.
     psycopg2 = None
     RealDictCursor = None
+
+try:
+    import pg8000.dbapi as pg8000
+except ImportError:
+    pg8000 = None
 
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -76,7 +83,7 @@ class PostgresCursor:
             added_returning = True
         self.cursor.execute(query, params or ())
         if added_returning and self.cursor.description:
-            row = self.cursor.fetchone()
+            row = self.fetchone()
             self.lastrowid = row["id"] if row else None
         return self
 
@@ -88,13 +95,23 @@ class PostgresCursor:
         return self
 
     def fetchone(self):
-        return self.cursor.fetchone()
+        return self._row_to_dict(self.cursor.fetchone())
 
     def fetchall(self):
-        return self.cursor.fetchall()
+        return [self._row_to_dict(row) for row in self.cursor.fetchall()]
 
     def __iter__(self):
-        return iter(self.cursor)
+        return iter(self.fetchall())
+
+    def _row_to_dict(self, row):
+        if row is None:
+            return None
+        if isinstance(row, dict):
+            return row
+        if hasattr(row, "keys"):
+            return dict(row)
+        columns = [description[0] for description in self.cursor.description or []]
+        return dict(zip(columns, row))
 
 
 class PostgresConnection:
@@ -120,12 +137,24 @@ class PostgresConnection:
 def get_conn():
     if not USE_POSTGRES:
         raise RuntimeError("DATABASE_URL is required for PostgreSQL deployment.")
-    if psycopg2 is None:
-        raise RuntimeError("PostgreSQL \u9700\u8981\u5b89\u88dd psycopg2-binary\uff0c\u8acb\u57f7\u884c\uff1apip install psycopg2-binary")
-    connect_kwargs = {}
-    if "sslmode=" not in DATABASE_URL:
-        connect_kwargs["sslmode"] = "require"
-    return PostgresConnection(psycopg2.connect(DATABASE_URL, **connect_kwargs))
+    if psycopg2 is not None:
+        connect_kwargs = {}
+        if "sslmode=" not in DATABASE_URL:
+            connect_kwargs["sslmode"] = "require"
+        return PostgresConnection(psycopg2.connect(DATABASE_URL, **connect_kwargs))
+    if pg8000 is not None:
+        parsed = urlparse(DATABASE_URL)
+        database = (parsed.path or "/postgres").lstrip("/") or "postgres"
+        raw_conn = pg8000.connect(
+            user=unquote(parsed.username or ""),
+            password=unquote(parsed.password or ""),
+            host=parsed.hostname,
+            port=parsed.port or 5432,
+            database=database,
+            ssl_context=ssl.create_default_context(),
+        )
+        return PostgresConnection(raw_conn)
+    raise RuntimeError("PostgreSQL driver is missing. Install psycopg2-binary or pg8000.")
 
 
 def rows_to_dicts(rows):
