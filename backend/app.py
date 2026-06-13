@@ -560,10 +560,16 @@ def seed_default_cards(conn):
 def prepare_database():
     if request.method == "OPTIONS":
         return ("", 204)
+    if request.path in ("/", "/api/health"):
+        return None
     if app.config.get("DB_READY"):
         return None
-    init_db()
-    app.config["DB_READY"] = True
+    try:
+        init_db()
+        app.config["DB_READY"] = True
+    except Exception as exc:
+        app.logger.exception("Database initialization failed")
+        return jsonify({"success": False, "message": f"Database initialization failed: {exc}"}), 500
     return None
 
 
@@ -812,6 +818,17 @@ def ensure_reward_card_icons(conn, group_id=None):
 @app.route("/api/health")
 def health():
     return jsonify({"ok": True, "message": "StudyTogether API is running"})
+
+
+@app.route("/api/db-check")
+def db_check():
+    try:
+        init_db()
+        app.config["DB_READY"] = True
+        return jsonify({"success": True, "message": "Database connection and schema are ready"})
+    except Exception as exc:
+        app.logger.exception("Database check failed")
+        return jsonify({"success": False, "message": str(exc)}), 500
 
 
 @app.route("/api/groups/<int:group_id>/notifications")
