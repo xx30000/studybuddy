@@ -21,8 +21,31 @@ except ImportError:
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+
+def load_local_env(env_path):
+    if not env_path.exists():
+        return
+    if load_dotenv is not None:
+        load_dotenv(env_path, override=False)
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('\"').strip("'")
+        os.environ.setdefault(key, value)
+
 
 BASE_DIR = Path(__file__).resolve().parent
+load_local_env(BASE_DIR / ".env")
+load_local_env(BASE_DIR.parent / ".env")
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
@@ -117,11 +140,14 @@ class PostgresCursor:
 class PostgresConnection:
     is_postgres = True
 
-    def __init__(self, raw_conn):
+    def __init__(self, raw_conn, use_real_dict_cursor=False):
         self.raw_conn = raw_conn
+        self.use_real_dict_cursor = use_real_dict_cursor
 
     def cursor(self):
-        return PostgresCursor(self.raw_conn.cursor(cursor_factory=RealDictCursor))
+        if self.use_real_dict_cursor and RealDictCursor is not None:
+            return PostgresCursor(self.raw_conn.cursor(cursor_factory=RealDictCursor))
+        return PostgresCursor(self.raw_conn.cursor())
 
     def execute(self, sql, params=None):
         cursor = self.cursor()
@@ -141,7 +167,7 @@ def get_conn():
         connect_kwargs = {}
         if "sslmode=" not in DATABASE_URL:
             connect_kwargs["sslmode"] = "require"
-        return PostgresConnection(psycopg2.connect(DATABASE_URL, **connect_kwargs))
+        return PostgresConnection(psycopg2.connect(DATABASE_URL, **connect_kwargs), use_real_dict_cursor=True)
     if pg8000 is not None:
         parsed = urlparse(DATABASE_URL)
         database = (parsed.path or "/postgres").lstrip("/") or "postgres"
@@ -497,9 +523,9 @@ def init_db():
 
         if not user_ids:
             seed_users = [
-                ("??", "wen@example.com", "123456"),
-                ("??", "ze@example.com", "123456"),
-                ("??", "qing@example.com", "123456"),
+                ("DemoWen", "wen@example.com", "123456"),
+                ("DemoZe", "ze@example.com", "123456"),
+                ("DemoQing", "qing@example.com", "123456"),
             ]
             for nickname, email, password in seed_users:
                 cur.execute(
