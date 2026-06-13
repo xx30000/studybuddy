@@ -5,6 +5,7 @@ node_modules/
 dist/
 __pycache__/
 *.pyc
+.DS_Store
 backend/venv/
 backend/__pycache__/
 backend/studymeal.db

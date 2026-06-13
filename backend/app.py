@@ -118,7 +118,7 @@ class PostgresConnection:
 
 def get_conn():
     if not USE_POSTGRES:
-        raise RuntimeError("DATABASE_URL is required. This deployment uses Neon PostgreSQL, not SQLite.")
+        raise RuntimeError("DATABASE_URL is required for PostgreSQL deployment.")
     if psycopg2 is None:
         raise RuntimeError("PostgreSQL \u9700\u8981\u5b89\u88dd psycopg2-binary\uff0c\u8acb\u57f7\u884c\uff1apip install psycopg2-binary")
     return PostgresConnection(psycopg2.connect(DATABASE_URL))
