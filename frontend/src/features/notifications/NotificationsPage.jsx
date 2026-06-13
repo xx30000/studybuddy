@@ -8,7 +8,7 @@ const TYPE_LABELS = {
   coin: '金幣',
   card: '卡牌',
   draw: '抽卡',
-  approval: '同意',
+  approval: '審核',
   announcement: '公告',
   system: '系統',
 };
@@ -25,7 +25,7 @@ export default function NotificationsPage({ session, notifications, refreshNotif
       method: 'PUT',
       body: JSON.stringify({ user_id: session.user.id }),
     });
-    setToast('通知已全部標記為已讀', 'success');
+    setToast('全部通知已標記為已讀', 'success');
     refreshNotifications();
   }
 
@@ -61,7 +61,7 @@ export default function NotificationsPage({ session, notifications, refreshNotif
                   <div className="notification-title-line">
                     <h3 className="notification-card-title">{notification.title}</h3>
                     <span className={`notification-type type-${notification.type}`}>
-                      {TYPE_LABELS[notification.type] || notification.type || '系統'}
+                      {TYPE_LABELS[notification.type] || notification.type || TYPE_LABELS.system}
                     </span>
                   </div>
                   <p className="notification-card-message">{notification.message}</p>
@@ -74,7 +74,7 @@ export default function NotificationsPage({ session, notifications, refreshNotif
           {!notifications.length && (
             <div className="empty-text empty-with-icon">
               <UiIcon name="bell" className="empty-icon" />
-              <p>目前沒有通知</p>
+              <p>目前還沒有通知</p>
             </div>
           )}
         </div>

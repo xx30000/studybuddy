@@ -16,7 +16,7 @@ import { UiIcon } from './lib/icons.js';
 
 function toastIconName(message, type) {
   if (message?.includes('公告')) return 'announcement';
-  if (message?.includes('抽卡')) return 'star';
+  if (message?.includes('抽卡') || message?.includes('獎勵')) return 'star';
   if (message?.includes('金幣')) return 'coin';
   if (message?.includes('Email')) return 'mail';
   if (message?.includes('群組') || message?.includes('通關密語')) return 'key';
@@ -161,52 +161,124 @@ export default function App() {
     }
   }
 
-  async function refresh() {
-    if (!session?.group?.id) {
-      setGroupInfo(null);
-      setTasks([]);
-      setHistory([]);
-      setRewardCards([]);
-      setMyRewardCards([]);
-      setNotifications([]);
-      setAnnouncements([]);
+  function clearGroupScopedData() {
+    setGroupInfo(null);
+    setTasks([]);
+    setHistory([]);
+    setRewardCards([]);
+    setMyRewardCards([]);
+    setNotifications([]);
+    setAnnouncements([]);
+  }
+
+  async function refreshHomeData() {
+    if (!session?.group?.id || !session?.user?.id) {
+      clearGroupScopedData();
       return;
     }
 
     const gid = session.group.id;
-    const [group, taskList, historyList, cardList, myCards, notificationData, announcementData] = await Promise.all([
+    const [group, announcementData] = await Promise.all([
       api(`/group/${gid}`),
-      api(`/groups/${gid}/tasks`),
-      api(`/history/${gid}`),
-      api(`/groups/${gid}/reward-cards?user_id=${session.user.id}`),
-      api(`/users/${session.user.id}/reward-cards`),
-      api(`/groups/${gid}/notifications?user_id=${session.user.id}`),
       api(`/groups/${gid}/announcements`),
     ]);
     setGroupInfo(group);
-    setTasks(taskList.tasks || taskList);
-    setHistory(historyList);
-    setRewardCards(cardList);
-    setMyRewardCards(myCards);
-    setNotifications(notificationData.notifications || []);
     setAnnouncements(announcementData.announcements || []);
   }
 
+  async function refreshTaskData() {
+    if (!session?.group?.id || !session?.user?.id) {
+      clearGroupScopedData();
+      return;
+    }
+
+    const gid = session.group.id;
+    const [group, taskList] = await Promise.all([
+      api(`/group/${gid}`),
+      api(`/groups/${gid}/tasks`),
+    ]);
+    setGroupInfo(group);
+    setTasks(taskList.tasks || taskList);
+  }
+
+  async function refreshTreasureData() {
+    if (!session?.group?.id || !session?.user?.id) {
+      clearGroupScopedData();
+      return;
+    }
+
+    const gid = session.group.id;
+    const cardList = await api(`/groups/${gid}/reward-cards?user_id=${session.user.id}`);
+    setRewardCards(cardList);
+  }
+
+  async function refreshMyVaultData() {
+    if (!session?.user?.id) {
+      setMyRewardCards([]);
+      return;
+    }
+
+    const myCards = await api(`/users/${session.user.id}/reward-cards`);
+    setMyRewardCards(myCards);
+  }
+
+  async function refreshHistoryData() {
+    if (!session?.group?.id) {
+      setHistory([]);
+      return;
+    }
+
+    const historyList = await api(`/history/${session.group.id}`);
+    setHistory(historyList);
+  }
+
+  async function refresh() {
+    if (!session?.group?.id || !session?.user?.id) {
+      clearGroupScopedData();
+      return;
+    }
+
+    if (tab === 'settings') {
+      return;
+    }
+
+    if (tab === 'tasks') {
+      await refreshTaskData();
+      return;
+    }
+    if (tab === 'treasure') {
+      await refreshTreasureData();
+      return;
+    }
+    if (tab === 'my-vault') {
+      await refreshMyVaultData();
+      return;
+    }
+    if (tab === 'history') {
+      await refreshHistoryData();
+      return;
+    }
+    if (tab === 'notifications') {
+      await refreshNotifications();
+      return;
+    }
+
+    await refreshHomeData();
+  }
+
   useEffect(() => {
+    if (!session?.group?.id || !session?.user?.id) {
+      clearGroupScopedData();
+      return;
+    }
     refresh().catch((err) => showToast(err.message, 'error'));
-  }, [session]);
+  }, [session?.group?.id, session?.user?.id, tab]);
 
   useEffect(() => {
     if (session?.user?.id) {
       loadUserGroups(!session?.group?.id).catch((err) => showToast(err.message, 'error'));
     }
   }, [session?.user?.id]);
-
-  useEffect(() => {
-    if (tab === 'notifications') {
-      refreshNotifications().catch((err) => showToast(err.message, 'error'));
-    }
-  }, [tab]);
 
   async function joinGroup(passcode) {
     try {
@@ -318,6 +390,51 @@ export default function App() {
     setTab('home');
   }
 
+  function renderNeedsGroupPage(pageId) {
+    const pageMeta = {
+      tasks: { title: '任務', icon: 'check', message: '任務分派需要先選擇一個共讀群組。請到設定裡選擇、建立或加入群組。' },
+      treasure: { title: '國庫', icon: 'bag', message: '國庫卡牌池需要先選擇一個共讀群組。請到設定裡選擇、建立或加入群組。' },
+      'my-vault': { title: '寶庫', icon: 'star', message: '我的寶庫會顯示你在群組中抽到的獎勵卡。請先選擇一個共讀群組。' },
+      notifications: { title: '通知', icon: 'bell', message: '群組通知需要先選擇一個共讀群組。請到設定裡選擇、建立或加入群組。' },
+      history: { title: '歷程紀錄', icon: 'hourglass', message: '歷程紀錄需要先選擇一個共讀群組。請到設定裡選擇、建立或加入群組。' },
+    };
+    const meta = pageMeta[pageId] || { title: '共讀功能', icon: 'friends', message: '請先選擇一個共讀群組。' };
+
+    return (
+      <section className="white-card no-group-card home-card">
+        <div className="section-title blue">
+          <span />
+          <UiIcon name={meta.icon} className="section-icon" />
+          {meta.title}
+        </div>
+        <p>{meta.message}</p>
+        {userGroups.length > 0 && (
+          <div className="joined-group-list compact-group-list">
+            {userGroups.map((group) => (
+              <button
+                key={group.id}
+                type="button"
+                className={`joined-group-chip ${String(session?.group?.id) === String(group.id) ? 'active' : ''}`}
+                onClick={() => selectGroup(group)}
+              >
+                {group.name}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="no-group-actions">
+          <button
+            className="primary-btn compact inline-action"
+            type="button"
+            onClick={() => goToTab('settings')}
+          >
+            <UiIcon name="gear" /> 前往設定
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   function renderNoGroupHome() {
     return (
       <div className="home-stack">
@@ -326,8 +443,8 @@ export default function App() {
             <UiIcon name="cat-book" className="hero-icon" />
             <div>
               <small className="icon-meta"><UiIcon name="sprout" /> 個人讀書模式</small>
-              <h2>今天也先把自己的節奏顧好</h2>
-              <p>你目前正在使用個人讀書模式。可以先自己讀書，也可以到「設定」裡的共讀群組管理建立或加入群組。</p>
+              <h2>今天也一起好好讀書</h2>
+              <p>你目前正在使用個人讀書模式。可以先自己讀書，也可以到設定裡建立或加入共讀群組。</p>
             </div>
           </div>
         </section>
@@ -344,14 +461,14 @@ export default function App() {
             <div className="section-title blue">
               <span />
               <UiIcon name="friends" className="section-icon" />
-              前往設定
+              共讀群組
             </div>
-            <p>想建立或加入共讀群組，可以到「設定」裡的共讀群組管理。</p>
+            <p>想建立或加入共讀群組，可以到設定裡的共讀群組管理。</p>
           </div>
           <div className="no-group-actions">
             <button className="primary-btn compact inline-action" type="button" onClick={() => {
               setGroupGateActionMode(null);
-              setTab('settings');
+              goToTab('settings');
             }}>
               <UiIcon name="gear" /> 前往設定
             </button>
@@ -471,22 +588,21 @@ export default function App() {
         <LogOut size={18} />
         登出
       </button>
+      <div className="toast-stack" aria-live="polite" aria-atomic="true">
+        {toasts.map((toast) => (
+          <div className={`toast-note ${toast.type} ${toast.leaving ? 'leaving' : ''}`} key={toast.id}>
+            <UiIcon name={toastIconName(toast.message, toast.type)} className="toast-icon" />
+            <span>{toast.message}</span>
+          </div>
+        ))}
+      </div>
       <main className="phone-shell notebook-page">
-        <div className="toast-stack">
-          {toasts.map((toast) => (
-            <div className={`toast-note ${toast.type} ${toast.leaving ? 'leaving' : ''}`} key={toast.id}>
-              <UiIcon name={toastIconName(toast.message, toast.type)} className="toast-icon" />
-              <span>{toast.message}</span>
-            </div>
-          ))}
-        </div>
-
         <TabBar tab={tab} setTab={goToTab} />
 
         <div className="home-layout-center">
           {tab === 'home' && (hasGroup ? renderGroupHome() : renderNoGroupHome())}
           {tab === 'settings' && renderSettingsPage()}
-          {tab !== 'home' && tab !== 'settings' && !hasGroup && renderNoGroupHome()}
+          {tab !== 'home' && tab !== 'settings' && !hasGroup && renderNeedsGroupPage(tab)}
 
           {hasGroup && tab !== 'home' && tab !== 'settings' && (
             <>

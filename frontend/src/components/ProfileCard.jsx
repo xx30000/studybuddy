@@ -4,41 +4,41 @@ import { api } from '../lib/api.js';
 import { UiIcon } from '../lib/icons.js';
 
 const TEXT = {
-  groupFallback: '\u5171\u8b80\u7fa4\u7d44',
-  groupName: '\u7fa4\u7d44\u540d\u7a31',
-  editGroupName: '\u7de8\u8f2f\u7fa4\u7d44\u540d\u7a31',
-  groupNamePlaceholder: '\u8f38\u5165\u7fa4\u7d44\u540d\u7a31',
-  groupNameRequired: '\u7fa4\u7d44\u540d\u7a31\u4e0d\u53ef\u7a7a\u767d',
-  groupNameUpdated: '\u7fa4\u7d44\u540d\u7a31\u5df2\u66f4\u65b0',
-  groupNameUpdateFailed: '\u7fa4\u7d44\u540d\u7a31\u66f4\u65b0\u5931\u6557',
-  save: '\u5132\u5b58',
-  cancel: '\u53d6\u6d88',
-  announcementRequired: '\u516c\u544a\u5167\u5bb9\u4e0d\u53ef\u7a7a\u767d',
-  announcementPublished: '\u516c\u544a\u5df2\u767c\u5e03',
-  announcementPublishFailed: '\u516c\u544a\u767c\u5e03\u5931\u6557',
-  announcementDeleted: '\u516c\u544a\u5df2\u522a\u9664',
-  announcementDeleteFailed: '\u516c\u544a\u522a\u9664\u5931\u6557',
-  groupAnnouncement: '\u7fa4\u7d44\u516c\u544a',
-  addAnnouncement: '\u65b0\u589e\u516c\u544a',
-  announcementPlaceholder: '\u8f38\u5165\u516c\u544a\u5167\u5bb9',
-  publish: '\u767c\u5e03',
-  anonymousMember: '\u533f\u540d\u6210\u54e1',
-  deleteAnnouncement: '\u522a\u9664\u516c\u544a',
-  noAnnouncements: '\u76ee\u524d\u5c1a\u672a\u6709\u516c\u544a\uff0c\u9ede\u64ca\u53f3\u4e0a\u89d2\u7684\u7b46\u65b0\u589e\u4e00\u5247\u516c\u544a\u3002',
-  studyNotebook: '\u7684\u8b80\u66f8\u7b46\u8a18',
-  myCoins: '\u6211\u7684',
-  coins: '\u91d1\u5e63',
-  group: '\u7fa4\u7d44',
-  logout: '\u767b\u51fa',
-  groupTotalCoins: '\u7fa4\u7d44\u7e3d\u91d1\u5e63',
-  memberCount: '\u6210\u54e1',
-  peopleUnit: '\u4f4d',
-  featuredTasks: '\u672c\u9031\u91cd\u9ede\u4efb\u52d9',
-  unassigned: '\u672a\u6307\u6d3e',
-  completed: '\u5df2\u5b8c\u6210',
-  unset: '\u672a\u8a2d\u5b9a',
-  due: '\u622a\u6b62',
-  noFeaturedTasks: '\u76ee\u524d\u6c92\u6709\u91cd\u9ede\u4efb\u52d9\uff0c\u53ef\u4ee5\u5728\u4efb\u52d9\u5361\u7247\u4e0a\u8a2d\u70ba\u91cd\u9ede\u3002',
+  groupFallback: '共讀群組',
+  groupName: '群組名稱',
+  editGroupName: '編輯群組名稱',
+  groupNamePlaceholder: '輸入群組名稱',
+  groupNameRequired: '群組名稱不可空白',
+  groupNameUpdated: '群組名稱已更新',
+  groupNameUpdateFailed: '群組名稱更新失敗',
+  save: '儲存',
+  cancel: '取消',
+  announcementRequired: '公告內容不可空白',
+  announcementPublished: '公告已發布',
+  announcementPublishFailed: '公告發布失敗',
+  announcementDeleted: '公告已刪除',
+  announcementDeleteFailed: '公告刪除失敗',
+  groupAnnouncement: '群組公告',
+  addAnnouncement: '新增公告',
+  announcementPlaceholder: '輸入公告內容',
+  publish: '發布',
+  anonymousMember: '匿名成員',
+  deleteAnnouncement: '刪除公告',
+  noAnnouncements: '目前尚未有公告，點擊右上角的筆新增一則公告。',
+  studyNotebook: '的讀書筆記',
+  myCoins: '我的',
+  coins: '金幣',
+  group: '群組',
+  logout: '登出',
+  groupTotalCoins: '群組總金幣',
+  memberCount: '成員',
+  peopleUnit: '位',
+  featuredTasks: '本週重點任務',
+  unassigned: '未指派',
+  completed: '已完成',
+  unset: '未設定',
+  due: '截止',
+  noFeaturedTasks: '目前沒有重點任務，可以在任務卡片上設為重點。',
 };
 
 function getGroup(session, groupInfo) {
@@ -285,7 +285,7 @@ export default function ProfileCard({
         <h2 className="hero-title-row"><UiIcon name="star" className="title-icon" />{nickname} {TEXT.studyNotebook}</h2>
         <p>
           <UiIcon name="coin" />
-          {TEXT.myCoins} {userCoins} {TEXT.coins}{'\uFF0C'}{TEXT.group} {groupCoins} {TEXT.coins}
+          {TEXT.myCoins} {userCoins} {TEXT.coins}{'，'}{TEXT.group} {groupCoins} {TEXT.coins}
         </p>
       </div>
       <div className="group-summary-card profile-summary-only">
@@ -304,8 +304,8 @@ export default function ProfileCard({
                   <p>
                     <strong>{task.title}</strong>
                     <small>
-                      {task.assigned_to_nickname || task.assigned_name || TEXT.unassigned}{'\uFF5C'}
-                      {done ? TEXT.completed : `${task.due_date || task.deadline || TEXT.unset} ${TEXT.due}`}{'\uFF5C'}
+                      {task.assigned_to_nickname || task.assigned_name || TEXT.unassigned}{'｜'}
+                      {done ? TEXT.completed : `${task.due_date || task.deadline || TEXT.unset} ${TEXT.due}`}{'｜'}
                       {task.coin_reward ?? task.reward ?? 0} {TEXT.coins}
                     </small>
                   </p>
@@ -323,7 +323,7 @@ export default function ProfileCard({
         <div className="group-member-coins">
           {members.map((member) => (
             <span key={member.id}>
-              <UiIcon name="heart" /> {member.nickname || member.name}{'\uFF1A'}{member.coins ?? member.coin ?? 0} {TEXT.coins}
+              <UiIcon name="heart" /> {member.nickname || member.name}{'：'}{member.coins ?? member.coin ?? 0} {TEXT.coins}
             </span>
           ))}
         </div>

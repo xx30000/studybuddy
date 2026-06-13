@@ -33,7 +33,7 @@ export default function StudyMonitor({
   const [weekSummary, setWeekSummary] = useState({ total_minutes: 0, total_sessions: 0 });
   const [studyRanking, setStudyRanking] = useState([]);
 
-  const modeLabel = groupId ? '群組讀書監督' : '個人讀書監督';
+  const modeLabel = groupId ? '群組讀書模式' : '個人讀書模式';
   const rewardPreview = useMemo(() => Math.floor(Math.floor(studyElapsedSeconds / 60) / 10) * 5, [studyElapsedSeconds]);
 
   async function loadStudyData() {
@@ -61,7 +61,7 @@ export default function StudyMonitor({
   }
 
   useEffect(() => {
-    loadStudyData().catch((err) => setToast?.(err.message || '讀書統計讀取失敗', 'error'));
+    loadStudyData().catch((err) => setToast?.(err.message || '讀書統計載入失敗', 'error'));
   }, [currentUser?.id, groupId]);
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export default function StudyMonitor({
 
   function startTimer() {
     if (!studySubject.trim()) {
-      setToast?.('請先輸入今天要讀的內容', 'error');
+      setToast?.('請先輸入今天要讀的主題', 'error');
       return;
     }
     setStudyStartTime(new Date());
@@ -113,7 +113,7 @@ export default function StudyMonitor({
       ? studyElapsedSeconds
       : Math.max(0, Math.floor((endTime.getTime() - studyStartTime.getTime()) / 1000) - pausedSeconds);
     if (effectiveSeconds < 60) {
-      setToast?.('至少讀滿 1 分鐘再完成紀錄', 'error');
+      setToast?.('至少讀滿 1 分鐘才能完成記錄', 'error');
       return;
     }
 
@@ -129,14 +129,14 @@ export default function StudyMonitor({
           end_time: endTime.toISOString(),
         }),
       });
-      setToast?.(data.message || '讀書紀錄已完成', 'success');
+      setToast?.(data.message || '讀書記錄已完成', 'success');
       onUserCoinsUpdated?.(data.session?.user_coins);
       setStudySubject('');
       resetTimer();
       await loadStudyData();
       refresh?.();
     } catch (err) {
-      setToast?.(err.message || '讀書紀錄儲存失敗', 'error');
+      setToast?.(err.message || '讀書記錄儲存失敗', 'error');
     }
   }
 
@@ -152,18 +152,18 @@ export default function StudyMonitor({
         </div>
         <div className="study-reward-preview">
           <UiIcon name="coin" />
-          預估 {rewardPreview} 金幣
+          預計 {rewardPreview} 金幣
         </div>
       </div>
 
-      <label className="study-subject-label" htmlFor="study-subject">今天讀什麼？</label>
+      <label className="study-subject-label" htmlFor="study-subject">今天要讀什麼？</label>
       <input
         id="study-subject"
         className="study-subject-input"
         value={studySubject}
         disabled={studyTimerStatus !== 'idle'}
         onChange={(event) => setStudySubject(event.target.value)}
-        placeholder="例如：資料庫、網頁、期末簡報、Class Diagram"
+        placeholder="例如：系統分析、登入測試、Class Diagram"
       />
 
       <div className="study-timer-display" aria-live="polite">{formatSeconds(studyElapsedSeconds)}</div>
@@ -203,7 +203,7 @@ export default function StudyMonitor({
           <small>分鐘 / {todaySummary.total_sessions} 次</small>
         </div>
         <div>
-          <span>本週讀書</span>
+          <span>本週累計</span>
           <strong>{weekSummary.total_minutes}</strong>
           <small>分鐘 / {weekSummary.total_sessions} 次</small>
         </div>
@@ -211,7 +211,7 @@ export default function StudyMonitor({
 
       {groupId && (
         <div className="study-ranking-card">
-          <b><UiIcon name="crown" /> 本週群組讀書排行</b>
+          <b><UiIcon name="crown" /> 本週共讀排行榜</b>
           <div className="study-ranking-list">
             {studyRanking.map((item) => (
               <div className="study-ranking-item" key={item.user_id}>
@@ -220,7 +220,7 @@ export default function StudyMonitor({
                 <small>{item.total_minutes} 分鐘 / {item.total_sessions} 次</small>
               </div>
             ))}
-            {!studyRanking.length && <p className="empty-text">本週還沒有讀書紀錄。</p>}
+            {!studyRanking.length && <p className="empty-text">本週還沒有讀書記錄</p>}
           </div>
         </div>
       )}

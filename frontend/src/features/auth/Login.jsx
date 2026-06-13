@@ -92,63 +92,28 @@ export default function Login({ onLogin }) {
           <img src="/images/studybuddy-logo.jpg" alt="StudyBuddy logo" className="study-logo-image" />
         </div>
         <h1 className="login-title app-title brand-en-title">StudyBuddy</h1>
-        <p className="subtitle">一起讀書、分工、集金幣、抽獎勵卡。</p>
+        <p className="subtitle">一起讀書、完成任務、累積金幣，解鎖你們的國庫獎勵。</p>
 
         {message && <p className="error-text auth-message"><UiIcon name="bell" /> {message}</p>}
 
         {!isRegister ? (
           <form onSubmit={submitLogin} className="castle-form">
             <label className="icon-meta"><UiIcon name="mail" /> Email</label>
-            <input
-              type="email"
-              value={loginForm.email}
-              onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
-              placeholder="you@example.com"
-            />
-
+            <input type="email" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} placeholder="you@example.com" />
             <label className="icon-meta"><UiIcon name="key" /> 密碼</label>
-            <input
-              type="password"
-              value={loginForm.password}
-              onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-              placeholder="請輸入密碼"
-            />
-
+            <input type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="請輸入密碼" />
             <button className="primary-btn" type="submit"><UiIcon name="check" /> 登入</button>
           </form>
         ) : (
           <form onSubmit={submitRegister} className="castle-form">
             <label className="icon-meta"><UiIcon name="heart" /> 暱稱</label>
-            <input
-              value={registerForm.nickname}
-              onChange={(e) => setRegisterForm({ ...registerForm, nickname: e.target.value })}
-              placeholder="你的共讀暱稱"
-            />
-
+            <input value={registerForm.nickname} onChange={(e) => setRegisterForm({ ...registerForm, nickname: e.target.value })} placeholder="你的共讀暱稱" />
             <label className="icon-meta"><UiIcon name="mail" /> Email</label>
-            <input
-              type="email"
-              value={registerForm.email}
-              onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })}
-              placeholder="you@example.com"
-            />
-
+            <input type="email" value={registerForm.email} onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })} placeholder="you@example.com" />
             <label className="icon-meta"><UiIcon name="key" /> 密碼</label>
-            <input
-              type="password"
-              value={registerForm.password}
-              onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
-              placeholder="請輸入密碼"
-            />
-
+            <input type="password" value={registerForm.password} onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })} placeholder="請輸入密碼" />
             <label className="icon-meta"><UiIcon name="check" /> 確認密碼</label>
-            <input
-              type="password"
-              value={registerForm.confirmPassword}
-              onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
-              placeholder="再次輸入密碼"
-            />
-
+            <input type="password" value={registerForm.confirmPassword} onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })} placeholder="再次輸入密碼" />
             <button className="primary-btn" type="submit"><UiIcon name="check" /> 註冊</button>
           </form>
         )}

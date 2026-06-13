@@ -5,7 +5,7 @@ function historyIcon(item) {
   const text = `${item.type || ''} ${item.reason || ''}`;
   if (text.includes('任務')) return historyIconMap.task;
   if (text.includes('金幣')) return historyIconMap.coin;
-  if (text.includes('卡牌')) return historyIconMap.card;
+  if (text.includes('卡')) return historyIconMap.card;
   if (text.includes('抽卡')) return historyIconMap.draw;
   if (text.includes('公告')) return historyIconMap.announcement;
   if (text.includes('群組')) return historyIconMap.group;
@@ -17,7 +17,7 @@ export default function HistoryList({ items }) {
     return (
       <div className="empty-text empty-with-icon">
         <UiIcon name="hourglass" className="empty-icon" />
-        <p>目前沒有歷程紀錄</p>
+        <p>目前還沒有歷程紀錄</p>
       </div>
     );
   }

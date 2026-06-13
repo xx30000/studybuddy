@@ -54,6 +54,10 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "*").strip() or "*"
 FRONTEND_ORIGINS = [origin.strip() for origin in FRONTEND_URL.split(",") if origin.strip()]
 
 app = Flask(__name__)
+try:
+    app.json.ensure_ascii = False
+except Exception:
+    app.config["JSON_AS_ASCII"] = False
 CORS(app, origins=FRONTEND_ORIGINS if FRONTEND_URL != "*" else "*")
 
 TASK_REWARDS = [20, 25, 30, 35, 40, 45, 50]
@@ -538,10 +542,10 @@ def init_db():
                 user_ids.append(cur.lastrowid)
 
         owner_id = user_ids[0]
-        announcement = "??????????????"
+        announcement = "本週目標：完成簡報與系統展示"
         cur.execute(
             "INSERT INTO groups (name, passcode, announcement, created_by, total_coin, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            ("????????", "studymeal", announcement, owner_id, 0, now()),
+            ("期末專題小組", "studymeal", announcement, owner_id, 0, now()),
         )
         group_id = cur.lastrowid
 
@@ -561,9 +565,9 @@ def init_db():
         )
 
         seed_tasks = [
-            ("??????", "??????????????", user_ids[0], 50, "2026-06-10"),
-            ("?? Class Diagram", "????????", user_ids[min(1, len(user_ids) - 1)], 40, "2026-06-12"),
-            ("??????", "????????????", user_ids[min(2, len(user_ids) - 1)], 35, "2026-06-14"),
+            ("完成簡報架構", "整理專題簡報的章節與展示流程", user_ids[0], 50, "2026-06-10"),
+            ("修改 Class Diagram", "補上關聯與多重性", user_ids[min(1, len(user_ids) - 1)], 40, "2026-06-12"),
+            ("測試登入功能", "確認登入與註冊流程正常", user_ids[min(2, len(user_ids) - 1)], 35, "2026-06-14"),
         ]
         for title, desc, assigned, reward, deadline in seed_tasks:
             cur.execute(
@@ -597,9 +601,9 @@ def seed_default_cards(conn):
             continue
 
         cards = [
-            ("?? 10 ???", "??????? 10 ??", "????", "??", 60),
-            ("?????", "????????????", "????", "??", 25),
-            ("????????", "???????????", "????", "??", 10),
+            ("休息 10 分鐘券", "可以讓自己休息 10 分鐘", "休息獎勵", "普通", 60),
+            ("點心補給券", "完成讀書後可以吃一份小點心", "生活小獎", "稀有", 25),
+            ("指定讀書音樂券", "可以指定一次共讀背景音樂", "團隊互動", "史詩", 10),
         ]
         for title, description, category, rarity, weight in cards:
             conn.execute(
@@ -614,17 +618,21 @@ def seed_default_cards(conn):
             )
 
 
+def ensure_db_initialized():
+    if app.config.get("DB_READY"):
+        return
+    init_db()
+    app.config["DB_READY"] = True
+
+
 @app.before_request
 def prepare_database():
     if request.method == "OPTIONS":
         return ("", 204)
     if request.path in ("/", "/api/health"):
         return None
-    if app.config.get("DB_READY"):
-        return None
     try:
-        init_db()
-        app.config["DB_READY"] = True
+        ensure_db_initialized()
     except Exception as exc:
         app.logger.exception("Database initialization failed")
         return jsonify({"success": False, "message": f"Database initialization failed: {exc}"}), 500
@@ -881,8 +889,7 @@ def health():
 @app.route("/api/db-check")
 def db_check():
     try:
-        init_db()
-        app.config["DB_READY"] = True
+        ensure_db_initialized()
         return jsonify({"success": True, "message": "Database connection and schema are ready"})
     except Exception as exc:
         app.logger.exception("Database check failed")
@@ -952,17 +959,17 @@ def auth_register():
     password = data.get("password") or ""
 
     if not nickname or not email or not password:
-        return jsonify({"success": False, "message": "??????"}), 400
+        return jsonify({"success": False, "message": "欄位不可空白"}), 400
     if "@" not in email:
-        return jsonify({"success": False, "message": "Email ?????"}), 400
+        return jsonify({"success": False, "message": "Email 格式不正確"}), 400
 
     conn = None
     try:
         conn = get_conn()
         if conn.execute("SELECT 1 FROM users WHERE nickname = ?", (nickname,)).fetchone():
-            return jsonify({"success": False, "message": "???????"}), 400
+            return jsonify({"success": False, "message": "此暱稱已被使用"}), 400
         if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
-            return jsonify({"success": False, "message": "? Email ????"}), 400
+            return jsonify({"success": False, "message": "此 Email 已註冊過"}), 400
 
         cur = conn.cursor()
         cur.execute(
@@ -980,7 +987,7 @@ def auth_register():
         if conn:
             conn.raw_conn.rollback()
         app.logger.exception("Register failed")
-        return jsonify({"success": False, "message": f"?????{exc}"}), 500
+        return jsonify({"success": False, "message": f"註冊失敗：{exc}"}), 500
     finally:
         if conn:
             conn.close()
@@ -1994,6 +2001,6 @@ def exchange_reward():
 
 
 if __name__ == "__main__":
-    init_db()
+    ensure_db_initialized()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)

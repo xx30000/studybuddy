@@ -11,7 +11,7 @@ const TABS = [
 
 export default function TabBar({ tab, setTab }) {
   return (
-    <nav className="bottom-nav" aria-label="底部導覽">
+    <nav className="bottom-nav" aria-label="底部導覽列">
       {TABS.map(({ id, label, icon }) => (
         <button
           key={id}
