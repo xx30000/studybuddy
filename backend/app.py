@@ -3,7 +3,6 @@ from pathlib import Path
 import os
 import random
 import re
-import sqlite3
 
 try:
     import psycopg2
@@ -17,12 +16,14 @@ from flask_cors import CORS
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "studymeal.db"
 DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 USE_POSTGRES = bool(DATABASE_URL)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "*").strip() or "*"
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=[FRONTEND_URL] if FRONTEND_URL != "*" else "*")
 
 TASK_REWARDS = [20, 25, 30, 35, 40, 45, 50]
 DRAW_COST = 50
@@ -50,7 +51,7 @@ def now():
 
 
 def adapt_postgres_sql(sql):
-    sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+    sql = sql.replace("SERIAL PRIMARY KEY", "SERIAL PRIMARY KEY")
     sql = re.sub(r"datetime\(([^)]+)\)", r"\1", sql)
     sql = sql.replace("?", "%s")
     return sql
@@ -116,14 +117,11 @@ class PostgresConnection:
 
 
 def get_conn():
-    if USE_POSTGRES:
-        if psycopg2 is None:
-            raise RuntimeError("PostgreSQL \u9700\u8981\u5b89\u88dd psycopg2-binary\uff0c\u8acb\u57f7\u884c\uff1apip install psycopg2-binary")
-        return PostgresConnection(psycopg2.connect(DATABASE_URL))
-
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    if not USE_POSTGRES:
+        raise RuntimeError("DATABASE_URL is required. This deployment uses Neon PostgreSQL, not SQLite.")
+    if psycopg2 is None:
+        raise RuntimeError("PostgreSQL \u9700\u8981\u5b89\u88dd psycopg2-binary\uff0c\u8acb\u57f7\u884c\uff1apip install psycopg2-binary")
+    return PostgresConnection(psycopg2.connect(DATABASE_URL))
 
 
 def rows_to_dicts(rows):
@@ -141,17 +139,15 @@ def create_notification(conn, group_id, title, message, notification_type="syste
 
 
 def table_columns(conn, table):
-    if getattr(conn, "is_postgres", False):
-        rows = conn.execute(
-            """
-            SELECT column_name
-            FROM information_schema.columns
-            WHERE table_schema = 'public' AND table_name = ?
-            """,
-            (table,),
-        ).fetchall()
-        return {row["column_name"] for row in rows}
-    return {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    rows = conn.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = ?
+        """,
+        (table,),
+    ).fetchall()
+    return {row["column_name"] for row in rows}
 
 
 def add_column(conn, table, column_sql):
@@ -215,7 +211,7 @@ def init_db():
     cur.executescript(
         """
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT,
             avatar TEXT DEFAULT 'book',
             coin INTEGER DEFAULT 0,
@@ -227,7 +223,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS groups (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             passcode TEXT NOT NULL,
             announcement TEXT DEFAULT '',
@@ -238,7 +234,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS group_members (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             group_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             joined_at TEXT DEFAULT '',
@@ -248,7 +244,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS group_announcements (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             group_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             content TEXT NOT NULL,
@@ -258,7 +254,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             group_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             description TEXT DEFAULT '',
@@ -280,7 +276,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS coin_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             group_id INTEGER NOT NULL,
             user_id INTEGER,
             amount INTEGER NOT NULL,
@@ -292,7 +288,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS rewards (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             group_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             cost INTEGER NOT NULL,
@@ -302,7 +298,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS reward_exchanges (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             reward_id INTEGER NOT NULL,
             group_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
@@ -314,7 +310,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS reward_cards (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             group_id INTEGER NOT NULL,
             title TEXT NOT NULL,
             description TEXT DEFAULT '',
@@ -331,7 +327,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS reward_card_approvals (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             reward_card_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             approved_at TEXT NOT NULL,
@@ -340,7 +336,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS user_reward_cards (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             group_id INTEGER NOT NULL,
             reward_card_id INTEGER NOT NULL,
@@ -355,7 +351,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS study_sessions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL,
             group_id INTEGER,
             subject TEXT,
@@ -370,7 +366,7 @@ def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS notifications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             group_id INTEGER NOT NULL,
             user_id INTEGER,
             title TEXT NOT NULL,
@@ -607,7 +603,7 @@ def fetch_group_tasks(conn, group_id):
         LEFT JOIN users AS assigned ON tasks.assigned_to = assigned.id
         LEFT JOIN users AS creator ON tasks.created_by = creator.id
         WHERE tasks.group_id = ?
-        ORDER BY tasks.is_completed ASC, datetime(tasks.created_at) DESC, tasks.id DESC
+        ORDER BY tasks.is_completed ASC, tasks.created_at DESC, tasks.id DESC
         """,
         (group_id,),
     ).fetchall()
@@ -641,7 +637,7 @@ def fetch_group_announcements(conn, group_id):
         FROM group_announcements
         LEFT JOIN users ON group_announcements.user_id = users.id
         WHERE group_announcements.group_id = ?
-        ORDER BY datetime(group_announcements.created_at) ASC, group_announcements.id ASC
+        ORDER BY group_announcements.created_at ASC, group_announcements.id ASC
         """,
         (group_id,),
     ).fetchall()
@@ -706,7 +702,7 @@ def group_detail(conn, group_id):
         LEFT JOIN users AS assigned ON tasks.assigned_to = assigned.id
         LEFT JOIN users AS creator ON tasks.created_by = creator.id
         WHERE tasks.group_id = ? AND tasks.is_featured = 1
-        ORDER BY tasks.is_completed ASC, datetime(tasks.created_at) DESC, tasks.id DESC
+        ORDER BY tasks.is_completed ASC, tasks.created_at DESC, tasks.id DESC
         """,
         (group_id,),
     ).fetchall()
@@ -789,7 +785,7 @@ def get_notifications(group_id):
             """
             SELECT * FROM notifications
             WHERE group_id = ? AND (user_id IS NULL OR user_id = ?)
-            ORDER BY datetime(created_at) DESC, id DESC
+            ORDER BY created_at DESC, id DESC
             """,
             (group_id, user_id),
         ).fetchall()
@@ -798,7 +794,7 @@ def get_notifications(group_id):
             """
             SELECT * FROM notifications
             WHERE group_id = ? AND user_id IS NULL
-            ORDER BY datetime(created_at) DESC, id DESC
+            ORDER BY created_at DESC, id DESC
             """,
             (group_id,),
         ).fetchall()
@@ -1879,4 +1875,5 @@ def exchange_reward():
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
