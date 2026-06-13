@@ -460,43 +460,60 @@ def init_db():
 
     group_count = cur.execute("SELECT COUNT(*) AS c FROM groups").fetchone()["c"]
     if group_count == 0:
+        existing_users = cur.execute("SELECT id FROM users ORDER BY id ASC LIMIT 3").fetchall()
+        user_ids = [user["id"] for user in existing_users]
+
+        if not user_ids:
+            seed_users = [
+                ("??", "wen@example.com", "123456"),
+                ("??", "ze@example.com", "123456"),
+                ("??", "qing@example.com", "123456"),
+            ]
+            for nickname, email, password in seed_users:
+                cur.execute(
+                    """
+                    INSERT INTO users (name, nickname, email, password, avatar, coin, coins, created_at)
+                    VALUES (?, ?, ?, ?, 'book', 0, 0, ?)
+                    """,
+                    (nickname, nickname, email, password, now()),
+                )
+                user_ids.append(cur.lastrowid)
+
+        owner_id = user_ids[0]
+        announcement = "??????????????"
         cur.execute(
             "INSERT INTO groups (name, passcode, announcement, created_by, total_coin, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            ("期末專題共讀小隊", "studymeal", "本週目標：完成簡報與系統展示", 1, 0, now()),
+            ("????????", "studymeal", announcement, owner_id, 0, now()),
         )
         group_id = cur.lastrowid
-        seed_users = [
-            ("小雯", "wen@example.com", "123456"),
-            ("阿澤", "ze@example.com", "123456"),
-            ("小晴", "qing@example.com", "123456"),
-        ]
-        for idx, (nickname, email, password) in enumerate(seed_users):
-            cur.execute(
-                """
-                INSERT INTO users (name, nickname, email, password, avatar, coin, coins, created_at)
-                VALUES (?, ?, ?, ?, 'book', 0, 0, ?)
-                """,
-                (nickname, nickname, email, password, now()),
-            )
-            user_id = cur.lastrowid
+
+        for idx, user_id in enumerate(user_ids):
             role = "owner" if idx == 0 else "member"
             cur.execute(
                 "INSERT INTO group_members (group_id, user_id, joined_at, role) VALUES (?, ?, ?, ?)",
                 (group_id, user_id, now(), role),
             )
 
+        cur.execute(
+            """
+            INSERT INTO group_announcements (group_id, user_id, content, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (group_id, owner_id, announcement, now()),
+        )
+
         seed_tasks = [
-            ("整理需求文件", "把專題需求整理成可以分工的任務清單", 1, 50, "2026-06-10"),
-            ("修改 Class Diagram", "確認使用者、任務、卡牌與歷程之間的關係", 2, 40, "2026-06-12"),
-            ("準備期末簡報", "整理系統特色、流程圖與展示腳本", 3, 35, "2026-06-14"),
+            ("??????", "??????????????", user_ids[0], 50, "2026-06-10"),
+            ("?? Class Diagram", "????????", user_ids[min(1, len(user_ids) - 1)], 40, "2026-06-12"),
+            ("??????", "????????????", user_ids[min(2, len(user_ids) - 1)], 35, "2026-06-14"),
         ]
         for title, desc, assigned, reward, deadline in seed_tasks:
             cur.execute(
                 """
                 INSERT INTO tasks (group_id, title, description, assigned_to, reward, status, deadline, created_by, created_at)
-                VALUES (?, ?, ?, ?, ?, 'pending', ?, 1, ?)
+                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?)
                 """,
-                (group_id, title, desc, assigned, reward, deadline, now()),
+                (group_id, title, desc, assigned, reward, deadline, owner_id, now()),
             )
 
     seed_default_cards(conn)
@@ -505,15 +522,26 @@ def init_db():
 
 
 def seed_default_cards(conn):
-    groups = conn.execute("SELECT id FROM groups").fetchall()
+    groups = conn.execute("SELECT id, created_by FROM groups").fetchall()
     for group in groups:
         count = conn.execute("SELECT COUNT(*) AS c FROM reward_cards WHERE group_id = ?", (group["id"],)).fetchone()["c"]
         if count:
             continue
+
+        creator_id = group["created_by"]
+        if not creator_id:
+            member = conn.execute(
+                "SELECT user_id FROM group_members WHERE group_id = ? ORDER BY id ASC LIMIT 1",
+                (group["id"],),
+            ).fetchone()
+            creator_id = member["user_id"] if member else None
+        if not creator_id:
+            continue
+
         cards = [
-            ("休息 10 分鐘券", "可以讓自己休息 10 分鐘", "休息獎勵", "普通", 60),
-            ("指定組員幫忙檢查簡報券", "可以請一位組員幫忙檢查簡報內容", "組員協助", "稀有", 25),
-            ("今天不用報告進度券", "今天可以不用在群組回報進度", "特殊權利", "史詩", 10),
+            ("?? 10 ???", "??????? 10 ??", "????", "??", 60),
+            ("?????", "????????????", "????", "??", 25),
+            ("????????", "???????????", "????", "??", 10),
         ]
         for title, description, category, rarity, weight in cards:
             conn.execute(
@@ -522,9 +550,9 @@ def seed_default_cards(conn):
                     group_id, title, description, category, rarity, weight,
                     icon_key, created_by, status, is_active, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 'active', 1, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 1, ?)
                 """,
-                (group["id"], title, description, category, rarity, weight, random.choice(CARD_ICON_KEYS), now()),
+                (group["id"], title, description, category, rarity, weight, random.choice(CARD_ICON_KEYS), creator_id, now()),
             )
 
 
