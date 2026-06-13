@@ -849,31 +849,38 @@ def auth_register():
     password = data.get("password") or ""
 
     if not nickname or not email or not password:
-        return jsonify({"success": False, "message": "欄位不可空白"}), 400
+        return jsonify({"success": False, "message": "??????"}), 400
     if "@" not in email:
-        return jsonify({"success": False, "message": "Email 格式不正確"}), 400
+        return jsonify({"success": False, "message": "Email ?????"}), 400
 
-    conn = get_conn()
-    if conn.execute("SELECT 1 FROM users WHERE nickname = ?", (nickname,)).fetchone():
-        conn.close()
-        return jsonify({"success": False, "message": "此暱稱已被使用"}), 400
-    if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
-        conn.close()
-        return jsonify({"success": False, "message": "此 Email 已註冊過"}), 400
+    conn = None
+    try:
+        conn = get_conn()
+        if conn.execute("SELECT 1 FROM users WHERE nickname = ?", (nickname,)).fetchone():
+            return jsonify({"success": False, "message": "???????"}), 400
+        if conn.execute("SELECT 1 FROM users WHERE email = ?", (email,)).fetchone():
+            return jsonify({"success": False, "message": "? Email ????"}), 400
 
-    cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO users (name, nickname, email, password, avatar, coin, coins, created_at)
-        VALUES (?, ?, ?, ?, 'book', 0, 0, ?)
-        """,
-        (nickname, nickname, email, password, now()),
-    )
-    conn.commit()
-    user = conn.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
-    result = normalize_user_row(user)
-    conn.close()
-    return jsonify({"success": True, "user": result})
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO users (name, nickname, email, password, avatar, coin, coins, created_at)
+            VALUES (?, ?, ?, ?, 'book', 0, 0, ?)
+            """,
+            (nickname, nickname, email, password, now()),
+        )
+        conn.commit()
+        user = conn.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
+        result = normalize_user_row(user)
+        return jsonify({"success": True, "user": result})
+    except Exception as exc:
+        if conn:
+            conn.raw_conn.rollback()
+        app.logger.exception("Register failed")
+        return jsonify({"success": False, "message": f"?????{exc}"}), 500
+    finally:
+        if conn:
+            conn.close()
 
 
 @app.route("/api/auth/login", methods=["POST"])
