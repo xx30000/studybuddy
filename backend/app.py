@@ -21,9 +21,10 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 USE_POSTGRES = bool(DATABASE_URL)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "*").strip() or "*"
+FRONTEND_ORIGINS = [origin.strip() for origin in FRONTEND_URL.split(",") if origin.strip()]
 
 app = Flask(__name__)
-CORS(app, origins=[FRONTEND_URL] if FRONTEND_URL != "*" else "*")
+CORS(app, origins=FRONTEND_ORIGINS if FRONTEND_URL != "*" else "*")
 
 TASK_REWARDS = [20, 25, 30, 35, 40, 45, 50]
 DRAW_COST = 50
@@ -39,10 +40,10 @@ CARD_ICON_KEYS = [
     "cat-face.png",
 ]
 RARITY_WEIGHTS = {
-    "普通": 60,
-    "稀有": 25,
-    "史詩": 10,
-    "傳說": 5,
+    "??": 60,
+    "??": 25,
+    "??": 10,
+    "??": 5,
 }
 
 
@@ -121,7 +122,10 @@ def get_conn():
         raise RuntimeError("DATABASE_URL is required for PostgreSQL deployment.")
     if psycopg2 is None:
         raise RuntimeError("PostgreSQL \u9700\u8981\u5b89\u88dd psycopg2-binary\uff0c\u8acb\u57f7\u884c\uff1apip install psycopg2-binary")
-    return PostgresConnection(psycopg2.connect(DATABASE_URL))
+    connect_kwargs = {}
+    if "sslmode=" not in DATABASE_URL:
+        connect_kwargs["sslmode"] = "require"
+    return PostgresConnection(psycopg2.connect(DATABASE_URL, **connect_kwargs))
 
 
 def rows_to_dicts(rows):
@@ -526,7 +530,13 @@ def seed_default_cards(conn):
 
 @app.before_request
 def prepare_database():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    if app.config.get("DB_READY"):
+        return None
     init_db()
+    app.config["DB_READY"] = True
+    return None
 
 
 def weighted_draw(cards):
