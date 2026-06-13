@@ -145,13 +145,16 @@ def get_conn():
     if pg8000 is not None:
         parsed = urlparse(DATABASE_URL)
         database = (parsed.path or "/postgres").lstrip("/") or "postgres"
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
         raw_conn = pg8000.connect(
             user=unquote(parsed.username or ""),
             password=unquote(parsed.password or ""),
             host=parsed.hostname,
             port=parsed.port or 5432,
             database=database,
-            ssl_context=ssl.create_default_context(),
+            ssl_context=ssl_context,
         )
         return PostgresConnection(raw_conn)
     raise RuntimeError("PostgreSQL driver is missing. Install psycopg2-binary or pg8000.")
