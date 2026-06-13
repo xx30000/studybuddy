@@ -25,6 +25,7 @@ function toastIconName(message, type) {
   return 'bell';
 }
 
+
 export default function App() {
   const [session, setSession] = useState(() => {
     const saved = localStorage.getItem('study_session');
@@ -48,6 +49,12 @@ export default function App() {
   const hasGroup = homeMode === 'group' && Boolean(session?.group?.id);
   const lastGroupKey = session?.user?.id ? `lastGroupId_${session.user.id}` : null;
 
+  function clearStoredTabState() {
+    localStorage.removeItem('activeTab');
+    localStorage.removeItem('study_active_tab');
+    localStorage.removeItem('studybuddy_active_tab');
+  }
+
   function saveSession(data) {
     setSession(data);
     localStorage.setItem('study_session', JSON.stringify(data));
@@ -57,6 +64,7 @@ export default function App() {
     localStorage.removeItem('study_session');
     localStorage.removeItem('studymeal_session');
     localStorage.removeItem('study_selected_group_id');
+    clearStoredTabState();
     if (lastGroupKey) localStorage.removeItem(lastGroupKey);
     setSession(null);
     setGroupInfo(null);
@@ -147,19 +155,41 @@ export default function App() {
     const groups = data.groups || [];
     setUserGroups(groups);
 
-    if (allowStoredSelection) {
-      const storageKey = `lastGroupId_${session.user.id}`;
-      const storedGroupId = localStorage.getItem(storageKey);
-      const selected = groups.find((group) => String(group.id) === String(storedGroupId));
-      if (selected) {
-        await enterGroup(selected);
-      } else {
-        localStorage.removeItem(storageKey);
-        saveSession({ ...session, group: null });
-        setHomeMode('personal');
-      }
+    const storageKey = `lastGroupId_${session.user.id}`;
+    const storedGroupId = localStorage.getItem(storageKey);
+    const selected = storedGroupId
+      ? groups.find((group) => String(group.id) === String(storedGroupId))
+      : null;
+    const sessionGroupStillExists = session?.group?.id
+      ? groups.some((group) => String(group.id) === String(session.group.id))
+      : false;
+
+    if (allowStoredSelection && selected) {
+      await enterGroup(selected);
+      return;
+    }
+
+    if (session?.group?.id && !sessionGroupStillExists) {
+      localStorage.removeItem(storageKey);
+      localStorage.removeItem('study_selected_group_id');
+      saveSession({ ...session, group: null });
+      setHomeMode('personal');
+      setTab('home');
+      setPreviousTab(null);
+      return;
+    }
+
+    if (!selected && storedGroupId) {
+      localStorage.removeItem(storageKey);
+    }
+
+    if (!session?.group?.id) {
+      setHomeMode('personal');
+      setTab('home');
+      setPreviousTab(null);
     }
   }
+
 
   function clearGroupScopedData() {
     setGroupInfo(null);
@@ -276,7 +306,8 @@ export default function App() {
 
   useEffect(() => {
     if (session?.user?.id) {
-      loadUserGroups(!session?.group?.id).catch((err) => showToast(err.message, 'error'));
+      clearStoredTabState();
+      loadUserGroups(true).catch((err) => showToast(err.message, 'error'));
     }
   }, [session?.user?.id]);
 
@@ -336,6 +367,8 @@ export default function App() {
   }
 
   function loginAndEnterHome(data) {
+    clearStoredTabState();
+    localStorage.removeItem('study_selected_group_id');
     saveSession({ ...data, group: null });
     setShowGroupGate(false);
     setGroupGateActionMode(null);
@@ -435,6 +468,7 @@ export default function App() {
     );
   }
 
+
   function renderNoGroupHome() {
     return (
       <div className="home-stack">
@@ -477,6 +511,7 @@ export default function App() {
       </div>
     );
   }
+
 
   function renderSettingsPage() {
     return (
@@ -575,9 +610,9 @@ export default function App() {
           type="button"
           className="global-back-arrow"
           onClick={handleBack}
-          aria-label="??"
+          aria-label="返回"
         >
-          ?
+          ←
         </button>
       )}
       <button
