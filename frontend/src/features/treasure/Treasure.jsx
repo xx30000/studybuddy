@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { api } from '../../lib/api.js';
+import { UiIcon } from '../../lib/icons.js';
 
-const CATEGORIES = ['學習輔助', '休息獎勵', '組員協助', '特殊權利', '娛樂放鬆'];
+const CATEGORIES = ['休息獎勵', '組員協助', '特殊權利', '學習加成', '生活小確幸'];
 const RARITIES = ['普通', '稀有', '史詩', '傳說'];
 const DEFAULT_WEIGHTS = {
   普通: 60,
@@ -11,6 +12,10 @@ const DEFAULT_WEIGHTS = {
   傳說: 5,
 };
 const DRAW_COST = 50;
+
+function iconSrc(iconKey) {
+  return `/images/icons-transparent/${iconKey || 'star.png'}`;
+}
 
 function totalActiveWeight(cards) {
   return cards
@@ -49,7 +54,7 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
 
   async function createCard(e) {
     e.preventDefault();
-    if (!form.title.trim()) return setToast('請輸入卡牌名稱');
+    if (!form.title.trim()) return setToast('請輸入卡牌名稱', 'error');
 
     await api(`/groups/${session.group.id}/reward-cards`, {
       method: 'POST',
@@ -58,7 +63,7 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
         created_by: session.user.id,
       }),
     });
-    setToast('已提出卡牌申請');
+    setToast('卡牌申請已送出', 'success');
     setForm({ title: '', description: '', category: '休息獎勵', rarity: '普通' });
     setShowForm(false);
     refresh();
@@ -69,7 +74,7 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
       method: 'POST',
       body: JSON.stringify({ user_id: session.user.id }),
     });
-    setToast(data.message);
+    setToast(data.message, 'success');
     refresh();
   }
 
@@ -80,20 +85,24 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
         body: JSON.stringify({ user_id: session.user.id }),
       });
       setDrawResult(data);
+      setToast(`抽卡成功，抽中「${data.reward_card.title}」`, 'success');
       refresh();
     } catch (err) {
-      setToast(err.message);
+      setToast(err.message, 'error');
     }
   }
 
   function approvalAction(card) {
+    if (card.status === 'active' || Number(card.is_active) === 1) {
+      return <span className="approval-note passed"><UiIcon name="check" /> 已加入國庫</span>;
+    }
     if (Number(card.created_by) === Number(session.user.id)) {
-      return <span className="approval-note">等待其他成員同意</span>;
+      return <span className="approval-note"><UiIcon name="pencil" /> 你已提出此卡牌</span>;
     }
     if (card.current_user_approved) {
-      return <span className="approval-note">已同意</span>;
+      return <span className="approval-note"><UiIcon name="heart" /> 你已同意</span>;
     }
-    return <button onClick={() => approveCard(card)}>同意加入卡牌池</button>;
+    return <button className="task-action-button treasury-action-button" type="button" onClick={() => approveCard(card)}>同意加入卡牌池</button>;
   }
 
   return (
@@ -101,73 +110,89 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
       {drawResult && (
         <div className="modal-backdrop">
           <section className="modal-card reward">
-            <h2>抽卡成功！</h2>
-            <p>花費 {drawResult.cost} 金幣</p>
-            <p>抽中獎勵卡：「{drawResult.reward_card.title}」</p>
-            <button className="primary-btn compact" onClick={() => setDrawResult(null)}>太棒了！</button>
+            <img src={iconSrc(drawResult.reward_card.icon_key)} alt="" className="draw-card-icon" />
+            <h2 className="hero-title-row"><UiIcon name="star" className="title-icon" /> 抽卡成功！</h2>
+            <p className="icon-meta"><UiIcon name="coin" /> 花費 {drawResult.cost} 金幣</p>
+            <p>你抽中了「{drawResult.reward_card.title}」</p>
+            <button className="primary-btn compact" type="button" onClick={() => setDrawResult(null)}>
+              收下獎勵
+            </button>
           </section>
         </div>
       )}
 
-      <section className="white-card treasury-head">
-        <h2>國庫卡牌池</h2>
-        <p>完成任務獲得金幣後，可以花費金幣從卡牌池中抽取獎勵卡。</p>
+      <section className="white-card treasury-head treasury-section home-card">
+        <h2 className="hero-title-row treasury-page-title"><UiIcon name="bag" className="title-icon" />國庫卡牌池</h2>
+        <p>完成任務獲得金幣後，可以花費金幣抽取成員共同建立的獎勵卡。</p>
       </section>
 
-      <section className="white-card draw-card-panel">
-        <div className="section-title blue"><span />抽取獎勵卡牌</div>
-        <p>花費金幣後，可從國庫卡牌池中隨機抽取一張獎勵卡。</p>
-        <strong>抽卡費用：{DRAW_COST} 金幣</strong>
-        <button className="primary-btn compact inline-action" onClick={drawCard}>確認抽卡</button>
+      <section className="white-card draw-card-panel treasury-section home-card">
+        <div className="section-title blue treasury-page-title"><span /><UiIcon name="star" className="section-icon" />抽一張獎勵卡</div>
+        <p>從目前已啟用的國庫卡牌池中，依照權重抽出一張獎勵卡。</p>
+        <strong className="icon-meta card-cost treasury-card-cost"><UiIcon name="coin" /> 抽卡費用：{DRAW_COST} 金幣</strong>
+        <button className="primary-btn compact inline-action" type="button" onClick={drawCard}>開始抽卡</button>
       </section>
 
-      <section className="white-card">
-        <div className="section-title pink"><span />已啟用卡牌</div>
-        <p className="section-note">這些卡牌已通過同意，可以被抽中。</p>
+      <section className="white-card treasury-section home-card">
+        <div className="section-title pink treasury-page-title"><span /><UiIcon name="star" className="section-icon" />已啟用卡牌</div>
+        <p className="section-note">這些卡牌已達同意門檻，已加入國庫卡牌池。</p>
         <div className="reward-card-grid">
           {activeCards.map((card) => (
             <article className="reward-card pool-card" key={card.id}>
               <CardBody card={card} rate={drawRate(card, activeTotalWeight)} />
             </article>
           ))}
-          {!activeCards.length && <p className="empty-text">目前沒有可抽取的獎勵卡牌</p>}
+          {!activeCards.length && (
+            <div className="empty-text empty-with-icon">
+              <UiIcon name="star" className="empty-icon" />
+              <p>目前還沒有可抽取的獎勵卡牌</p>
+            </div>
+          )}
         </div>
       </section>
 
-      <section className="white-card">
-        <div className="section-title pink"><span />待同意卡牌</div>
-        <p className="section-note">群組成員同意後，卡牌才會加入國庫卡牌池。</p>
+      <section className="white-card treasury-section home-card">
+        <div className="section-title pink treasury-page-title"><span /><UiIcon name="hourglass" className="section-icon" />等待同意卡牌</div>
+        <p className="section-note">等待一半以上成員同意，通過後會自動加入國庫卡牌池。</p>
         <div className="reward-card-grid">
           {pendingCards.map((card) => (
             <article className="reward-card pending-card" key={card.id}>
               <CardBody card={card} />
               <div className="approval-row">
-                <span>同意進度：{card.approval_count || 0} / {card.required_approvals || 0}</span>
+                <span className="icon-meta">
+                  <UiIcon name="check" />
+                  審核進度：{card.approval_count || 0} / {card.required_approvals || 0} 人同意
+                </span>
                 {approvalAction(card)}
               </div>
             </article>
           ))}
-          {!pendingCards.length && <p className="empty-text">目前沒有待同意卡牌</p>}
+          {!pendingCards.length && (
+            <div className="empty-text empty-with-icon">
+              <UiIcon name="hourglass" className="empty-icon" />
+              <p>目前沒有等待同意的卡牌</p>
+            </div>
+          )}
         </div>
       </section>
 
-      <section className="white-card treasury-head">
-        <button className="primary-btn compact inline-action" onClick={() => setShowForm((open) => !open)}>
+      <section className="white-card treasury-head treasury-section home-card">
+        <button className="primary-btn compact inline-action" type="button" onClick={() => setShowForm((open) => !open)}>
           <Plus size={17} /> 新增卡牌
         </button>
       </section>
 
       {showForm && (
-        <section className="white-card form-card reward-form-card">
-          <div className="section-title pink"><span />新增獎勵卡牌</div>
+        <section className="white-card form-card reward-form-card treasury-section home-card">
+          <div className="section-title pink treasury-page-title"><span /><UiIcon name="pencil" className="section-icon" />新增獎勵卡牌</div>
           <form onSubmit={createCard}>
             <input
-              placeholder="例如：休息 10 分鐘券"
+              placeholder="卡牌名稱，例如：休息 10 分鐘券"
               value={form.title}
               onChange={(e) => setForm({ ...form, title: e.target.value })}
             />
             <textarea
-              placeholder="例如：可以讓自己休息 10 分鐘"
+              placeholder="卡牌說明，例如：可以讓自己休息 10 分鐘"
               value={form.description}
               onChange={(e) => setForm({ ...form, description: e.target.value })}
             />
@@ -179,8 +204,8 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
                 {RARITIES.map((rarity) => <option key={rarity}>{rarity}</option>)}
               </select>
             </div>
-            <div className="readonly-reward">系統自動設定權重：{DEFAULT_WEIGHTS[form.rarity]}</div>
-            <button className="primary-btn compact" type="submit">提出卡牌申請</button>
+            <div className="readonly-reward"><UiIcon name="coin" /> 抽中權重會依稀有度設定：{DEFAULT_WEIGHTS[form.rarity]}</div>
+            <button className="primary-btn compact" type="submit">送出卡牌申請</button>
           </form>
         </section>
       )}
@@ -189,20 +214,28 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
 }
 
 function CardBody({ card, rate }) {
+  const approved = Number(card.approval_count || 0);
+  const required = Number(card.required_approvals || 0);
+  const isActive = card.status === 'active' || Number(card.is_active) === 1;
+
   return (
-    <>
-      <div className="reward-card-head">
-        <h3>{card.title}</h3>
-        <span className={`rarity-tag rarity-${card.rarity}`}>{card.rarity}</span>
+    <div className="reward-card-content">
+      <img src={iconSrc(card.icon_key)} alt="" className="treasure-icon" />
+      <div className="reward-card-main">
+        <div className="reward-card-head">
+          <h3 className="treasury-card-title reward-card-title">{card.title}</h3>
+          <span className={`rarity-tag rarity-${card.rarity}`}>{card.rarity}</span>
+        </div>
+        <p className="treasury-card-description reward-card-description">{card.description || '沒有卡牌說明'}</p>
+        <div className="card-meta treasury-card-meta reward-card-meta">
+          <span className="icon-meta"><UiIcon name="bag" /> {card.category}</span>
+          <span className="icon-meta"><UiIcon name="coin" /> 權重 {card.weight}</span>
+          {rate && <span className="icon-meta"><UiIcon name="star" /> 抽中率 {rate}</span>}
+          <span className="icon-meta"><UiIcon name={isActive ? 'check' : 'hourglass'} /> {isActive ? '已加入國庫' : '等待同意'}</span>
+          {required > 0 && <span className="icon-meta"><UiIcon name="heart" /> {approved} / {required} 人同意</span>}
+        </div>
+        <small className="treasury-card-meta reward-card-meta">建立者：{card.created_by_nickname || card.creator_name || '夥伴'} ｜ 建立時間：{card.created_at}</small>
       </div>
-      <p>{card.description || '沒有卡牌說明'}</p>
-      <div className="card-meta">
-        <span>{card.category}</span>
-        <span>權重 {card.weight}</span>
-        {rate && <span>機率 {rate}</span>}
-        <span>{card.status === 'active' ? '已啟用' : '待同意'}</span>
-      </div>
-      <small>建立者：{card.creator_name || '未知'} · 建立時間：{card.created_at}</small>
-    </>
+    </div>
   );
 }

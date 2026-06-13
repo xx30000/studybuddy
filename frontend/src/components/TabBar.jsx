@@ -1,20 +1,33 @@
 import React from 'react';
-import { BookOpen, Gift, History, PackageCheck } from 'lucide-react';
 
 const TABS = [
-  { id: 'tasks', label: '任務', icon: BookOpen },
-  { id: 'treasure', label: '國庫', icon: Gift },
-  { id: 'my-vault', label: '我的', icon: PackageCheck },
-  { id: 'history', label: '歷程', icon: History },
+  { id: 'home', label: '首頁', icon: 'cat-book' },
+  { id: 'tasks', label: '任務', icon: 'check' },
+  { id: 'treasure', label: '國庫', icon: 'bag' },
+  { id: 'my-vault', label: '寶庫', icon: 'star' },
+  { id: 'notifications', label: '通知', icon: 'bell' },
+  { id: 'settings', label: '設定', icon: 'gear' },
 ];
 
 export default function TabBar({ tab, setTab }) {
   return (
-    <nav className="tab-bar">
-      {TABS.map(({ id, label, icon: Icon }) => (
-        <button key={id} className={tab === id ? 'active' : ''} onClick={() => setTab(id)}>
-          <Icon size={20} />
-          {label}
+    <nav className="bottom-nav" aria-label="底部導覽">
+      {TABS.map(({ id, label, icon }) => (
+        <button
+          key={id}
+          className={`bottom-nav-item ${tab === id ? 'active' : ''}`}
+          type="button"
+          onClick={() => setTab(id)}
+        >
+          <img
+            src={`/images/icons-transparent/${icon}.png`}
+            alt=""
+            className="bottom-nav-icon"
+            onError={(event) => {
+              event.currentTarget.src = `/images/icons/${icon}.png`;
+            }}
+          />
+          <span>{label}</span>
         </button>
       ))}
     </nav>

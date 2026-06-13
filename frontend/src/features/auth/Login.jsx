@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { BookOpenCheck, Sparkles } from 'lucide-react';
 import { api } from '../../lib/api.js';
+import { UiIcon } from '../../lib/icons.js';
 
 const emptyLogin = { email: '', password: '' };
 const emptyRegister = { nickname: '', email: '', password: '', confirmPassword: '' };
@@ -38,7 +39,10 @@ export default function Login({ onLogin }) {
     try {
       const data = await api('/auth/login', {
         method: 'POST',
-        body: JSON.stringify(loginForm),
+        body: JSON.stringify({
+          email: loginForm.email.trim(),
+          password: loginForm.password,
+        }),
       });
       onLogin({ user: data.user, group: null });
     } catch (err) {
@@ -78,24 +82,23 @@ export default function Login({ onLogin }) {
   return (
     <div className="cloud-page login-cloud study-login-page">
       <div className="paper-grid" />
-      <div className="study-decor decor-note">專題</div>
+      <div className="study-decor decor-note">Note</div>
       <div className="study-decor decor-pencil" />
       <div className="study-decor decor-book"><BookOpenCheck size={34} /></div>
       <div className="study-decor decor-star"><Sparkles size={28} /></div>
 
       <main className="login-castle-card auth-card">
         <div className="logo-circle study-logo">
-          <BookOpenCheck size={58} />
-          <span className="mini-crown"><Sparkles size={28} /></span>
+          <img src="/images/studybuddy-logo.jpg" alt="StudyBuddy logo" className="study-logo-image" />
         </div>
-        <h1 className="app-title">一起讀書監督</h1>
-        <p className="subtitle">和夥伴一起完成專題，累積每一次努力</p>
+        <h1 className="login-title app-title brand-en-title">StudyBuddy</h1>
+        <p className="subtitle">一起讀書、分工、集金幣、抽獎勵卡。</p>
 
-        {message && <p className="error-text auth-message">{message}</p>}
+        {message && <p className="error-text auth-message"><UiIcon name="bell" /> {message}</p>}
 
         {!isRegister ? (
           <form onSubmit={submitLogin} className="castle-form">
-            <label>Email</label>
+            <label className="icon-meta"><UiIcon name="mail" /> Email</label>
             <input
               type="email"
               value={loginForm.email}
@@ -103,7 +106,7 @@ export default function Login({ onLogin }) {
               placeholder="you@example.com"
             />
 
-            <label>密碼</label>
+            <label className="icon-meta"><UiIcon name="key" /> 密碼</label>
             <input
               type="password"
               value={loginForm.password}
@@ -111,18 +114,18 @@ export default function Login({ onLogin }) {
               placeholder="請輸入密碼"
             />
 
-            <button className="primary-btn" type="submit">登入</button>
+            <button className="primary-btn" type="submit"><UiIcon name="check" /> 登入</button>
           </form>
         ) : (
           <form onSubmit={submitRegister} className="castle-form">
-            <label>暱稱</label>
+            <label className="icon-meta"><UiIcon name="heart" /> 暱稱</label>
             <input
               value={registerForm.nickname}
               onChange={(e) => setRegisterForm({ ...registerForm, nickname: e.target.value })}
               placeholder="你的共讀暱稱"
             />
 
-            <label>Email</label>
+            <label className="icon-meta"><UiIcon name="mail" /> Email</label>
             <input
               type="email"
               value={registerForm.email}
@@ -130,7 +133,7 @@ export default function Login({ onLogin }) {
               placeholder="you@example.com"
             />
 
-            <label>密碼</label>
+            <label className="icon-meta"><UiIcon name="key" /> 密碼</label>
             <input
               type="password"
               value={registerForm.password}
@@ -138,22 +141,22 @@ export default function Login({ onLogin }) {
               placeholder="請輸入密碼"
             />
 
-            <label>確認密碼</label>
+            <label className="icon-meta"><UiIcon name="check" /> 確認密碼</label>
             <input
               type="password"
               value={registerForm.confirmPassword}
               onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
-              placeholder="再輸入一次密碼"
+              placeholder="再次輸入密碼"
             />
 
-            <button className="primary-btn" type="submit">註冊</button>
+            <button className="primary-btn" type="submit"><UiIcon name="check" /> 註冊</button>
           </form>
         )}
 
         <p className="auth-switch">
-          {!isRegister ? '還沒有帳號嗎？' : '已經有帳號了？'}
+          {!isRegister ? '還沒有帳號？' : '已經有帳號？'}
           <button type="button" onClick={() => switchMode(isRegister ? 'login' : 'register')}>
-            {!isRegister ? '立即註冊' : '返回登入'}
+            {!isRegister ? '建立帳號' : '回到登入'}
           </button>
         </p>
       </main>

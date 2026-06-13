@@ -1,14 +1,14 @@
 import React from 'react';
-import { Sparkles } from 'lucide-react';
+import { UiIcon } from '../lib/icons.js';
 
 export default function TopMessage() {
   return (
-    <section className="royal-message">
-      <div className="message-doodle"><Sparkles size={22} /></div>
+    <section className="royal-message reminder-card study-reminder-card home-card">
+      <div className="message-doodle"><UiIcon name="sprout" className="hero-icon" /></div>
       <div>
-        <b>共讀進度提醒</b>
-        <h2>完成任務後，系統會把金幣加入小隊寶庫。</h2>
-        <p>一起分工、一起打勾，把專題慢慢推進。</p>
+        <b className="icon-meta"><UiIcon name="star" /> 共讀提醒</b>
+        <h2 className="hero-title-row reminder-title-main"><UiIcon name="coin" className="title-icon" />完成任務、累積金幣，解鎖你們的國庫獎勵。</h2>
+        <p className="icon-meta"><UiIcon name="coin" /> 一起把專題進度變成看得見的小成果。</p>
       </div>
     </section>
   );

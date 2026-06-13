@@ -2,17 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Plus } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { TASK_STATUS } from '../../lib/constants.js';
+import { UiIcon } from '../../lib/icons.js';
 import TaskRow from './TaskRow.jsx';
 
-const TASK_REWARDS = [20, 25, 30, 35, 40, 45, 50];
-
-function randomReward() {
-  return TASK_REWARDS[Math.floor(Math.random() * TASK_REWARDS.length)];
-}
-
 function isCompleted(task) {
-  const status = String(task.status || '');
-  return status === TASK_STATUS.DONE || status === 'done' || status.includes('完成');
+  return Number(task.is_completed) === 1 || String(task.status || '') === TASK_STATUS.DONE;
 }
 
 function isAssignedToCurrentUser(task, currentUser) {
@@ -24,7 +18,7 @@ function isAssignedToCurrentUser(task, currentUser) {
 }
 
 function completionMessage(data) {
-  return [`任務完成！`, `獲得 ${data.coins_added} 金幣`].join('\n');
+  return [`任務完成`, `獲得 ${data.coins_added} 金幣`].join('\n');
 }
 
 export default function Tasks({ session, members, tasks, refresh, setToast }) {
@@ -34,8 +28,8 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
     title: '',
     description: '',
     assigned_to: defaultMember,
-    deadline: '',
-    reward: randomReward(),
+    due_date: '',
+    is_featured: false,
   });
 
   const myTasks = useMemo(
@@ -51,19 +45,21 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
 
   async function createTask(e) {
     e.preventDefault();
-    if (!form.title.trim()) return setToast('請輸入任務名稱');
+    if (!form.title.trim()) return setToast('請輸入任務名稱', 'error');
 
-    await api('/tasks', {
+    const data = await api(`/groups/${session.group.id}/tasks`, {
       method: 'POST',
       body: JSON.stringify({
-        ...form,
-        status: TASK_STATUS.PENDING,
-        group_id: session.group.id,
+        title: form.title,
+        description: form.description,
+        due_date: form.due_date,
+        assigned_to: form.assigned_to,
         created_by: currentUser.id,
+        is_featured: form.is_featured ? 1 : 0,
       }),
     });
-    setForm({ title: '', description: '', assigned_to: defaultMember, deadline: '', reward: randomReward() });
-    setToast('已分派新任務');
+    setForm({ title: '', description: '', assigned_to: defaultMember, due_date: '', is_featured: false });
+    setToast(`任務新增成功，獎勵為 ${data.task.coin_reward} 金幣`, 'success');
     refresh();
   }
 
@@ -72,14 +68,28 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
       method: 'PUT',
       body: JSON.stringify({ user_id: currentUser.id, status: TASK_STATUS.DONE }),
     });
-    setToast(completionMessage(data));
+    setToast(data.message || completionMessage(data), 'success');
     refresh();
+  }
+
+  async function toggleFeatured(task) {
+    try {
+      const nextValue = Number(task.is_featured) === 1 ? 0 : 1;
+      const data = await api(`/tasks/${task.id}/featured`, {
+        method: 'PUT',
+        body: JSON.stringify({ user_id: currentUser.id, is_featured: nextValue }),
+      });
+      setToast(data.message || (nextValue ? '已設為重點任務' : '已取消重點任務'), 'success');
+      refresh();
+    } catch (err) {
+      setToast(err.message || '更新重點任務失敗', 'error');
+    }
   }
 
   return (
     <div className="page-stack">
-      <section className="white-card">
-        <div className="section-title blue"><span />全部專題任務</div>
+      <section className="white-card task-section home-card">
+        <div className="section-title blue task-page-title"><span /><UiIcon name="check" className="section-icon" />全部任務</div>
         <div className="task-list-soft">
           {tasks.map((task) => (
             <TaskRow
@@ -88,14 +98,21 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
               done={isCompleted(task)}
               showAssignee
               showCompleteAction={false}
+              currentUserId={currentUser.id}
+              onToggleFeatured={toggleFeatured}
             />
           ))}
-          {!tasks.length && <p className="empty-text">目前還沒有任何任務</p>}
+          {!tasks.length && (
+            <div className="empty-text empty-with-icon">
+              <UiIcon name="sprout" className="empty-icon" />
+              <p>目前還沒有任務</p>
+            </div>
+          )}
         </div>
       </section>
 
-      <section className="white-card">
-        <div className="section-title blue"><span />我的任務</div>
+      <section className="white-card task-section home-card">
+        <div className="section-title blue task-page-title"><span /><UiIcon name="flag" className="section-icon" />我的任務</div>
         <div className="task-list-soft">
           {myTasks.map((task) => (
             <TaskRow
@@ -104,14 +121,21 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
               done={isCompleted(task)}
               onComplete={completeTask}
               showCompleteAction
+              currentUserId={currentUser.id}
+              onToggleFeatured={toggleFeatured}
             />
           ))}
-          {!myTasks.length && <p className="empty-text">目前沒有分派給你的任務</p>}
+          {!myTasks.length && (
+            <div className="empty-text empty-with-icon">
+              <UiIcon name="check" className="empty-icon" />
+              <p>目前沒有分派給你的任務</p>
+            </div>
+          )}
         </div>
       </section>
 
-      <section className="white-card form-card">
-        <div className="section-title blue"><span />分派新任務</div>
+      <section className="white-card form-card task-section home-card">
+        <div className="section-title blue task-page-title"><span /><UiIcon name="pencil" className="section-icon" />分派新任務</div>
         <form onSubmit={createTask}>
           <input
             placeholder="任務名稱"
@@ -136,15 +160,23 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
             </select>
             <input
               type="date"
-              value={form.deadline}
-              onChange={(e) => setForm({ ...form, deadline: e.target.value })}
+              value={form.due_date}
+              onChange={(e) => setForm({ ...form, due_date: e.target.value })}
             />
           </div>
           <div className="readonly-reward">
-            本次任務獎勵：{form.reward} 金幣
+            <UiIcon name="coin" /> 任務金幣由系統隨機設定
           </div>
+          <label className="feature-checkbox">
+            <input
+              type="checkbox"
+              checked={form.is_featured}
+              onChange={(e) => setForm({ ...form, is_featured: e.target.checked })}
+            />
+            <UiIcon name="star" /> 顯示在首頁重點任務
+          </label>
           <button className="primary-btn compact" type="submit">
-            <Plus size={18} /> 分派任務
+            <Plus size={18} /> 新增任務
           </button>
         </form>
       </section>
