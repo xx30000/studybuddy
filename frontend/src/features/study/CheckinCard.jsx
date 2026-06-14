@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { createOrUpdateCheckin, getGroupTodayCheckins, getTodayCheckin } from '../../lib/api.js';
+import {
+  createOrUpdateCheckin,
+  getGroupTodayCheckins,
+  getTodayCheckin,
+  getTodayStudySummary,
+} from '../../lib/api.js';
 import { UiIcon } from '../../lib/icons.js';
 
 const MOOD_OPTIONS = ['很有精神', '普通', '有點累', '低電量', '壓力大', '完成很多'];
@@ -26,7 +31,8 @@ export default function CheckinCard({
   const [hasLoadedCheckin, setHasLoadedCheckin] = useState(false);
   const [checkinMood, setCheckinMood] = useState('');
   const [checkinNote, setCheckinNote] = useState('');
-  const [checkinStudyMinutes, setCheckinStudyMinutes] = useState('');
+  const [autoTodayStudyMinutes, setAutoTodayStudyMinutes] = useState(0);
+  const [manualExtraMinutes, setManualExtraMinutes] = useState('');
 
   const modeLabel = groupId ? '群組打卡' : '個人打卡';
   const statusText = hasCheckedInToday ? '今日已打卡' : '今日尚未打卡';
@@ -41,14 +47,22 @@ export default function CheckinCard({
     if (!currentUser?.id) return;
     setIsCheckinLoading(true);
     try {
-      const today = await getTodayCheckin(currentUser.id, groupId);
+      const [today, studySummary] = await Promise.all([
+        getTodayCheckin(currentUser.id, groupId),
+        getTodayStudySummary(currentUser.id, groupId),
+      ]);
       const checkin = today.checkin || null;
+      const summaryMinutes = Number.parseInt(
+        studySummary.today_study_minutes ?? studySummary.total_minutes ?? 0,
+        10,
+      );
       setTodayCheckin(checkin);
       setHasCheckedInToday(Boolean(today.has_checked_in_today));
       setCheckinStreakDays(today.streak_days || 0);
       setCheckinMood(checkin?.mood || '');
       setCheckinNote(checkin?.note || '');
-      setCheckinStudyMinutes(checkin?.study_minutes ? String(checkin.study_minutes) : '');
+      setAutoTodayStudyMinutes(Number.isFinite(summaryMinutes) ? Math.max(0, summaryMinutes) : 0);
+      setManualExtraMinutes('');
 
       if (groupId) {
         const groupToday = await getGroupTodayCheckins(groupId);
@@ -71,14 +85,15 @@ export default function CheckinCard({
 
   async function submitCheckin() {
     if (!currentUser?.id) return;
-    const minutes = Number.parseInt(checkinStudyMinutes, 10);
+    const extraMinutes = Number.parseInt(manualExtraMinutes, 10);
+    const finalStudyMinutes = autoTodayStudyMinutes + (Number.isFinite(extraMinutes) ? Math.max(0, extraMinutes) : 0);
     try {
       const data = await createOrUpdateCheckin({
         user_id: currentUser.id,
         group_id: groupId,
         mood: checkinMood,
         note: checkinNote,
-        study_minutes: Number.isFinite(minutes) ? Math.max(0, minutes) : 0,
+        study_minutes: finalStudyMinutes,
       });
       setToast?.(data.message || '今日打卡完成', 'success');
       if (data.user_coins !== undefined && data.user_coins !== null) {
@@ -122,6 +137,18 @@ export default function CheckinCard({
             </div>
           )}
 
+          <div className="checkin-auto-minutes-card">
+            <span>今日已讀書</span>
+            <strong>{autoTodayStudyMinutes}</strong>
+            <span>分鐘</span>
+          </div>
+
+          {autoTodayStudyMinutes <= 0 && (
+            <p className="checkin-helper-text">
+              今日尚未有讀書計時紀錄，可以先開始讀書監督，或手動補登分鐘數。
+            </p>
+          )}
+
           <div className="checkin-mood-grid" role="list" aria-label="選擇今日狀態">
             {MOOD_OPTIONS.map((mood) => (
               <button
@@ -144,25 +171,27 @@ export default function CheckinCard({
             placeholder="例如：讀完網路程式第三章、完成 UML 部署圖"
           />
 
-          <label className="checkin-field-label" htmlFor="checkin-minutes">讀書分鐘數</label>
-          <input
-            id="checkin-minutes"
-            className="checkin-minutes-input"
-            type="number"
-            min="0"
-            value={checkinStudyMinutes}
-            onChange={(event) => setCheckinStudyMinutes(event.target.value)}
-            placeholder="例如：120"
-          />
+          <label className="checkin-field-label checkin-extra-label" htmlFor="checkin-minutes">手動補登分鐘數</label>
+          <div className="checkin-action-row">
+            <input
+              id="checkin-minutes"
+              className="checkin-minutes-input checkin-extra-minutes-input"
+              type="number"
+              min="0"
+              value={manualExtraMinutes}
+              onChange={(event) => setManualExtraMinutes(event.target.value)}
+              placeholder="例如：30"
+            />
 
-          <button
-            type="button"
-            className="checkin-submit-button"
-            onClick={submitCheckin}
-            disabled={isCheckinLoading}
-          >
-            <UiIcon name="coin" /> {submitLabel}
-          </button>
+            <button
+              type="button"
+              className="checkin-submit-button"
+              onClick={submitCheckin}
+              disabled={isCheckinLoading}
+            >
+              <UiIcon name="coin" /> {submitLabel}
+            </button>
+          </div>
         </>
       )}
 

@@ -2,14 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { api } from './lib/api.js';
 import Login from './features/auth/Login.jsx';
-import JoinCastle from './features/auth/JoinCastle.jsx';
 import Tasks from './features/tasks/Tasks.jsx';
 import Treasure from './features/treasure/Treasure.jsx';
 import MyVault from './features/treasure/MyVault.jsx';
 import HistoryPage from './features/history/HistoryPage.jsx';
 import NotificationsPage from './features/notifications/NotificationsPage.jsx';
 import StudyMonitor from './features/study/StudyMonitor.jsx';
+import StatsPage from './features/stats/StatsPage.jsx';
 import CheckinCard from './features/study/CheckinCard.jsx';
+import SettingsPage from './features/settings/SettingsPage.jsx';
+import GroupChat from './features/groups/GroupChat.jsx';
 import TopMessage from './components/TopMessage.jsx';
 import ProfileCard, { GroupAnnouncementPanel, GroupNameHeader } from './components/ProfileCard.jsx';
 import TabBar from './components/TabBar.jsx';
@@ -111,6 +113,17 @@ export default function App() {
       },
     };
     saveSession(nextSession);
+  }
+
+  function handleUserUpdated(nextUser) {
+    if (!nextUser || !session?.user) return;
+    saveSession({
+      ...session,
+      user: {
+        ...session.user,
+        ...nextUser,
+      },
+    });
   }
 
   async function refreshNotifications() {
@@ -544,55 +557,19 @@ export default function App() {
 
   function renderSettingsPage() {
     return (
-      <div className="settings-page">
-        <section className="settings-card home-card">
-          <div className="settings-title-row">
-            <img
-              src="/images/icons-transparent/gear.png"
-              alt=""
-              className="settings-title-icon"
-            />
-            <h1 className="settings-title">設定</h1>
-          </div>
-          <div className="settings-section-title">目前狀態</div>
-          {hasGroup ? (
-            <p>目前模式：群組讀書模式｜目前群組：{session.group.name}</p>
-          ) : (
-            <p>目前模式：個人讀書模式</p>
-          )}
-        </section>
-
-        <section className="settings-card settings-group-management-card group-management-card home-card">
-          <div className="group-management-status">
-            <div className="settings-section-title"><UiIcon name="friends" /> 共讀群組管理</div>
-            <p className="group-management-description">選擇、建立或加入共讀群組，讓任務、金幣與國庫獎勵可以一起累積。</p>
-          </div>
-
-          <div className="settings-action-row group-management-actions">
-            <button
-              className="settings-action-button group-management-button group-selector-toggle"
-              type="button"
-              onClick={toggleGroupSelector}
-            >
-              <UiIcon name="friends" /> 共讀群組管理
-            </button>
-          </div>
-
-          {showGroupSelector && (
-            <div className="group-selector-panel">
-              <JoinCastle
-                user={session.user}
-                groups={userGroups}
-                onCreateGroup={createGroup}
-                onJoinGroup={joinGroup}
-                forcedActionMode={groupGateActionMode}
-                onActionModeChange={setGroupGateActionMode}
-                currentGroupId={session?.group?.id}
-              />
-            </div>
-          )}
-        </section>
-      </div>
+      <SettingsPage
+        session={session}
+        hasGroup={hasGroup}
+        userGroups={userGroups}
+        showGroupSelector={showGroupSelector}
+        toggleGroupSelector={toggleGroupSelector}
+        groupGateActionMode={groupGateActionMode}
+        setGroupGateActionMode={setGroupGateActionMode}
+        createGroup={createGroup}
+        joinGroup={joinGroup}
+        onUserUpdated={handleUserUpdated}
+        setToast={showToast}
+      />
     );
   }
 
@@ -628,6 +605,12 @@ export default function App() {
           announcements={announcements}
           refreshAnnouncements={refreshAnnouncements}
           refresh={refresh}
+          setToast={showToast}
+        />
+        <GroupChat
+          currentGroup={session.group}
+          user={session.user}
+          latestAnnouncement={announcements[announcements.length - 1] || null}
           setToast={showToast}
         />
         <ProfileCard
@@ -752,9 +735,17 @@ export default function App() {
         <div className="home-layout-center">
           {tab === 'home' && (hasGroup ? renderGroupHome() : renderNoGroupHome())}
           {tab === 'settings' && renderSettingsPage()}
-          {tab !== 'home' && tab !== 'settings' && !hasGroup && renderNeedsGroupPage(tab)}
+          {tab === 'stats' && (
+            <StatsPage
+              session={session}
+              currentGroup={hasGroup ? session.group : null}
+              setToast={showToast}
+              onOpenGroupSelector={openGroupSelector}
+            />
+          )}
+          {tab !== 'home' && tab !== 'settings' && tab !== 'stats' && !hasGroup && renderNeedsGroupPage(tab)}
 
-          {hasGroup && tab !== 'home' && tab !== 'settings' && (
+          {hasGroup && tab !== 'home' && tab !== 'settings' && tab !== 'stats' && (
             <>
               {tab === 'tasks' && (
                 <Tasks
