@@ -18,3 +18,26 @@ export async function api(path, options = {}) {
   if (!res.ok) throw new Error(data.message || data.error || '請求失敗');
   return data;
 }
+
+function checkinQuery(groupId) {
+  return groupId ? `?group_id=${groupId}` : '';
+}
+
+export function createOrUpdateCheckin(payload) {
+  return api('/checkins', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getTodayCheckin(userId, groupId) {
+  return api(`/users/${userId}/checkins/today${checkinQuery(groupId)}`);
+}
+
+export function getGroupTodayCheckins(groupId) {
+  return api(`/groups/${groupId}/checkins/today`);
+}
+
+export function getCheckinStreak(userId, groupId) {
+  return api(`/users/${userId}/checkins/streak${checkinQuery(groupId)}`);
+}

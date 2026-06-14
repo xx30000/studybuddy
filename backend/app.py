@@ -431,6 +431,20 @@ def init_db():
             FOREIGN KEY(group_id) REFERENCES groups(id)
         );
 
+        CREATE TABLE IF NOT EXISTS study_checkins (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            group_id INTEGER,
+            checkin_date DATE NOT NULL,
+            mood TEXT,
+            note TEXT,
+            study_minutes INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(user_id) REFERENCES users(id),
+            FOREIGN KEY(group_id) REFERENCES groups(id)
+        );
+
         CREATE TABLE IF NOT EXISTS notifications (
             id SERIAL PRIMARY KEY,
             group_id INTEGER NOT NULL,
@@ -519,6 +533,10 @@ def init_db():
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_unique ON group_members(group_id, user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_study_sessions_user_time ON study_sessions(user_id, start_time)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_study_sessions_group_time ON study_sessions(group_id, start_time)")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_study_checkins_personal_unique ON study_checkins(user_id, checkin_date) WHERE group_id IS NULL")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_study_checkins_group_unique ON study_checkins(user_id, group_id, checkin_date) WHERE group_id IS NOT NULL")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_study_checkins_group_date ON study_checkins(group_id, checkin_date)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_study_checkins_user_date ON study_checkins(user_id, checkin_date)")
 
     group_count = cur.execute("SELECT COUNT(*) AS c FROM groups").fetchone()["c"]
     if group_count == 0:
@@ -1833,6 +1851,260 @@ def study_summary(conn, user_id, group_id, period):
         "total_minutes": int(row["total_minutes"] or 0),
         "total_sessions": int(row["total_sessions"] or 0),
     }
+
+
+
+def today_date():
+    return datetime.now().date()
+
+
+def normalize_optional_group_id(value):
+    if value in (None, "", "null", "undefined"):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def checkin_scope_query(group_id):
+    if group_id is None:
+        return "group_id IS NULL", ()
+    return "group_id = ?", (group_id,)
+
+
+def serialize_checkin(row):
+    if not row:
+        return None
+    item = dict(row)
+    checkin_date = item.get("checkin_date")
+    if hasattr(checkin_date, "isoformat"):
+        item["checkin_date"] = checkin_date.isoformat()
+    created_at = item.get("created_at")
+    if hasattr(created_at, "isoformat"):
+        item["created_at"] = created_at.isoformat()
+    updated_at = item.get("updated_at")
+    if hasattr(updated_at, "isoformat"):
+        item["updated_at"] = updated_at.isoformat()
+    item["study_minutes"] = int(item.get("study_minutes") or 0)
+    return item
+
+
+def fetch_today_checkin(conn, user_id, group_id, target_date=None):
+    target_date = target_date or today_date()
+    scope_sql, scope_params = checkin_scope_query(group_id)
+    return conn.execute(
+        f"""
+        SELECT * FROM study_checkins
+        WHERE user_id = ? AND {scope_sql} AND checkin_date = ?
+        ORDER BY id DESC LIMIT 1
+        """,
+        (user_id, *scope_params, target_date.isoformat()),
+    ).fetchone()
+
+
+def calculate_checkin_streak(conn, user_id, group_id, target_date=None):
+    target_date = target_date or today_date()
+    scope_sql, scope_params = checkin_scope_query(group_id)
+    rows = conn.execute(
+        f"""
+        SELECT checkin_date
+        FROM study_checkins
+        WHERE user_id = ? AND {scope_sql} AND checkin_date <= ?
+        ORDER BY checkin_date DESC
+        """,
+        (user_id, *scope_params, target_date.isoformat()),
+    ).fetchall()
+    dates = []
+    for row in rows:
+        value = row["checkin_date"]
+        if hasattr(value, "isoformat"):
+            dates.append(value)
+        else:
+            dates.append(datetime.strptime(str(value)[:10], "%Y-%m-%d").date())
+
+    if not dates:
+        return 0
+    expected = target_date if dates[0] == target_date else target_date - timedelta(days=1)
+    streak = 0
+    seen = set(dates)
+    while expected in seen:
+        streak += 1
+        expected -= timedelta(days=1)
+    return streak
+
+
+def validate_checkin_scope(conn, user_id, group_id):
+    user = conn.execute("SELECT id, nickname, name, coins, coin FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        return None, (jsonify({"success": False, "message": "找不到使用者"}), 404)
+    if group_id is not None:
+        group = conn.execute("SELECT id FROM groups WHERE id = ?", (group_id,)).fetchone()
+        if not group:
+            return None, (jsonify({"success": False, "message": "找不到群組"}), 404)
+        if not is_group_member(conn, group_id, user_id):
+            return None, (jsonify({"success": False, "message": "只有群組成員可以打卡"}), 403)
+    return user, None
+
+
+@app.route("/api/checkins", methods=["POST"])
+def create_or_update_checkin():
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    group_id = normalize_optional_group_id(data.get("group_id"))
+    mood = (data.get("mood") or "").strip()
+    note = (data.get("note") or "").strip()
+    try:
+        study_minutes = max(0, int(data.get("study_minutes") or 0))
+    except (TypeError, ValueError):
+        study_minutes = 0
+
+    if not user_id:
+        return jsonify({"success": False, "message": "找不到使用者"}), 400
+
+    conn = get_conn()
+    user, error = validate_checkin_scope(conn, user_id, group_id)
+    if error:
+        conn.close()
+        return error
+
+    check_date = today_date()
+    current = fetch_today_checkin(conn, user_id, group_id, check_date)
+    created_at = now()
+    earned_coins = 0
+
+    if current:
+        conn.execute(
+            """
+            UPDATE study_checkins
+            SET mood = ?, note = ?, study_minutes = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (mood, note, study_minutes, created_at, current["id"]),
+        )
+        checkin_id = current["id"]
+        message = "今日打卡已更新"
+    else:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO study_checkins (user_id, group_id, checkin_date, mood, note, study_minutes, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (user_id, group_id, check_date.isoformat(), mood, note, study_minutes, created_at, created_at),
+        )
+        checkin_id = cur.lastrowid
+        earned_coins = 5 + (5 if study_minutes >= 60 else 0)
+        current_coins = user["coins"] if user["coins"] is not None else user["coin"]
+        next_coins = int(current_coins or 0) + earned_coins
+        conn.execute("UPDATE users SET coins = ?, coin = ? WHERE id = ?", (next_coins, next_coins, user_id))
+        nickname = user["nickname"] or user["name"] or "夥伴"
+        if group_id is not None:
+            if earned_coins:
+                conn.execute("UPDATE groups SET total_coin = COALESCE(total_coin, 0) + ? WHERE id = ?", (earned_coins, group_id))
+            reason = f"{nickname}完成今日讀書打卡，獲得 {earned_coins} 金幣。"
+            conn.execute(
+                "INSERT INTO coin_history (group_id, user_id, amount, reason, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                (group_id, user_id, earned_coins, reason, "checkin", created_at),
+            )
+            create_notification(conn, group_id, "每日打卡", reason, "coin")
+        message = f"今日打卡完成，獲得 {earned_coins} 金幣"
+
+    row = conn.execute("SELECT * FROM study_checkins WHERE id = ?", (checkin_id,)).fetchone()
+    streak_days = calculate_checkin_streak(conn, user_id, group_id, check_date)
+    user_row = conn.execute("SELECT id, coins, coin FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.commit()
+    conn.close()
+    return jsonify({
+        "success": True,
+        "ok": True,
+        "message": message,
+        "checkin": serialize_checkin(row),
+        "streak_days": streak_days,
+        "has_checked_in_today": True,
+        "earned_coins": earned_coins,
+        "user_coins": user_row["coins"] if user_row else None,
+    })
+
+
+@app.route("/api/users/<int:user_id>/checkins/today")
+def get_user_today_checkin(user_id):
+    group_id = parse_optional_group_id()
+    conn = get_conn()
+    user, error = validate_checkin_scope(conn, user_id, group_id)
+    if error:
+        conn.close()
+        return error
+    check_date = today_date()
+    row = fetch_today_checkin(conn, user_id, group_id, check_date)
+    streak_days = calculate_checkin_streak(conn, user_id, group_id, check_date)
+    conn.close()
+    return jsonify({
+        "success": True,
+        "has_checked_in_today": bool(row),
+        "checkin": serialize_checkin(row),
+        "streak_days": streak_days,
+    })
+
+
+@app.route("/api/users/<int:user_id>/checkins/streak")
+def get_user_checkin_streak(user_id):
+    group_id = parse_optional_group_id()
+    conn = get_conn()
+    user, error = validate_checkin_scope(conn, user_id, group_id)
+    if error:
+        conn.close()
+        return error
+    streak_days = calculate_checkin_streak(conn, user_id, group_id)
+    conn.close()
+    return jsonify({"success": True, "streak_days": streak_days})
+
+
+@app.route("/api/groups/<int:group_id>/checkins/today")
+def get_group_today_checkins(group_id):
+    conn = get_conn()
+    group = conn.execute("SELECT id FROM groups WHERE id = ?", (group_id,)).fetchone()
+    if not group:
+        conn.close()
+        return jsonify({"success": False, "message": "找不到群組"}), 404
+    check_date = today_date().isoformat()
+    rows = conn.execute(
+        """
+        SELECT users.id AS user_id,
+               users.nickname,
+               users.name,
+               study_checkins.id AS checkin_id,
+               study_checkins.mood,
+               study_checkins.note,
+               study_checkins.study_minutes,
+               study_checkins.created_at AS checkin_time
+        FROM group_members
+        JOIN users ON group_members.user_id = users.id
+        LEFT JOIN study_checkins
+          ON study_checkins.user_id = users.id
+         AND study_checkins.group_id = group_members.group_id
+         AND study_checkins.checkin_date = ?
+        WHERE group_members.group_id = ?
+        ORDER BY group_members.id ASC
+        """,
+        (check_date, group_id),
+    ).fetchall()
+    result = []
+    for row in rows:
+        checkin_time = row.get("checkin_time")
+        if hasattr(checkin_time, "isoformat"):
+            checkin_time = checkin_time.isoformat()
+        result.append({
+            "user_id": row["user_id"],
+            "display_name": row["nickname"] or row["name"] or "夥伴",
+            "has_checked_in_today": bool(row.get("checkin_id")),
+            "mood": row.get("mood"),
+            "note": row.get("note"),
+            "study_minutes": int(row.get("study_minutes") or 0),
+            "checkin_time": checkin_time,
+        })
+    conn.close()
+    return jsonify({"success": True, "checkins": result})
 
 
 @app.route("/api/study-sessions", methods=["POST"])

@@ -9,6 +9,7 @@ import MyVault from './features/treasure/MyVault.jsx';
 import HistoryPage from './features/history/HistoryPage.jsx';
 import NotificationsPage from './features/notifications/NotificationsPage.jsx';
 import StudyMonitor from './features/study/StudyMonitor.jsx';
+import CheckinCard from './features/study/CheckinCard.jsx';
 import TopMessage from './components/TopMessage.jsx';
 import ProfileCard, { GroupAnnouncementPanel, GroupNameHeader } from './components/ProfileCard.jsx';
 import TabBar from './components/TabBar.jsx';
@@ -43,6 +44,8 @@ export default function App() {
   const [userGroups, setUserGroups] = useState([]);
   const [toasts, setToasts] = useState([]);
   const [showGroupGate, setShowGroupGate] = useState(false);
+  const [showGroupSelector, setShowGroupSelector] = useState(false);
+  const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
   const [groupGateActionMode, setGroupGateActionMode] = useState(null);
   const [homeMode, setHomeMode] = useState(() => (session?.group?.id ? 'group' : 'personal'));
 
@@ -76,6 +79,8 @@ export default function App() {
     setAnnouncements([]);
     setUserGroups([]);
     setShowGroupGate(false);
+    setShowGroupSelector(false);
+    setIsModeMenuOpen(false);
     setGroupGateActionMode(null);
     setHomeMode('personal');
     setPreviousTab(null);
@@ -133,8 +138,9 @@ export default function App() {
     setGroupInfo({ group: nextGroup, members: nextGroup.members || groupInfo?.members || [] });
   }
 
-  async function enterGroup(group) {
+  async function enterGroup(group, options = {}) {
     if (!group?.id) return;
+    const { goHome = true } = options;
     const data = await api(`/groups/${group.id}`);
     const nextGroup = data.group;
     localStorage.setItem('study_selected_group_id', String(nextGroup.id));
@@ -143,10 +149,14 @@ export default function App() {
     setGroupInfo({ group: nextGroup, members: nextGroup.members || [] });
     setAnnouncements(nextGroup.announcements || []);
     setShowGroupGate(false);
+    setShowGroupSelector(false);
+    setIsModeMenuOpen(false);
     setGroupGateActionMode(null);
     setHomeMode('group');
-    setPreviousTab(null);
-    setTab('home');
+    if (goHome) {
+      setPreviousTab(null);
+      setTab('home');
+    }
   }
 
   async function loadUserGroups(allowStoredSelection = false) {
@@ -165,7 +175,7 @@ export default function App() {
       : false;
 
     if (allowStoredSelection && selected) {
-      await enterGroup(selected);
+      await enterGroup(selected, { goHome: false });
       return;
     }
 
@@ -174,8 +184,6 @@ export default function App() {
       localStorage.removeItem('study_selected_group_id');
       saveSession({ ...session, group: null });
       setHomeMode('personal');
-      setTab('home');
-      setPreviousTab(null);
       return;
     }
 
@@ -185,8 +193,6 @@ export default function App() {
 
     if (!session?.group?.id) {
       setHomeMode('personal');
-      setTab('home');
-      setPreviousTab(null);
     }
   }
 
@@ -325,12 +331,14 @@ export default function App() {
       loadUserGroups(false).catch(() => {});
       showToast(`已加入 ${data.group.name}`, 'success');
       setShowGroupGate(false);
+      setShowGroupSelector(false);
+      setIsModeMenuOpen(false);
       setGroupGateActionMode(null);
       setHomeMode('group');
       setPreviousTab(null);
       setTab('home');
     } catch (err) {
-      showToast(err.message, 'error');
+      showToast(err.message || '加入群組失敗', 'error');
     }
   }
 
@@ -348,6 +356,8 @@ export default function App() {
       loadUserGroups(false).catch(() => {});
       showToast(`已建立 ${data.group.name}`, 'success');
       setShowGroupGate(false);
+      setShowGroupSelector(false);
+      setIsModeMenuOpen(false);
       setGroupGateActionMode(null);
       setHomeMode('group');
       setPreviousTab(null);
@@ -357,24 +367,42 @@ export default function App() {
     }
   }
 
-  async function selectGroup(group) {
-    try {
-      await enterGroup(group);
-      showToast(`已切換到 ${group.name}`, 'success');
-    } catch (err) {
-      showToast(err.message || '加入群組失敗', 'error');
-    }
-  }
-
   function loginAndEnterHome(data) {
     clearStoredTabState();
     localStorage.removeItem('study_selected_group_id');
     saveSession({ ...data, group: null });
     setShowGroupGate(false);
+    setShowGroupSelector(false);
+    setIsModeMenuOpen(false);
     setGroupGateActionMode(null);
     setHomeMode('personal');
     setPreviousTab(null);
     setTab('home');
+  }
+
+  async function selectGroupFromModeMenu(group) {
+    try {
+      await enterGroup(group);
+      showToast(`已切換到 ${group.name}`, 'success');
+    } catch (err) {
+      showToast(err.message || '切換群組失敗', 'error');
+    }
+  }
+
+  function openGroupSelector() {
+    setPreviousTab(tab);
+    setShowGroupGate(false);
+    setGroupGateActionMode(null);
+    setShowGroupSelector(true);
+    setIsModeMenuOpen(false);
+    setTab('settings');
+  }
+
+  function toggleGroupSelector() {
+    if (showGroupSelector) {
+      setGroupGateActionMode(null);
+    }
+    setShowGroupSelector((current) => !current);
   }
 
   function goToTab(nextTab) {
@@ -382,11 +410,18 @@ export default function App() {
     setPreviousTab(tab);
     setShowGroupGate(false);
     setGroupGateActionMode(null);
+    setShowGroupSelector(false);
     setTab(nextTab);
   }
 
   function handleBack() {
     if (groupGateActionMode) {
+      setGroupGateActionMode(null);
+      return;
+    }
+
+    if (showGroupSelector) {
+      setShowGroupSelector(false);
       setGroupGateActionMode(null);
       return;
     }
@@ -419,19 +454,21 @@ export default function App() {
     setNotifications([]);
     setAnnouncements([]);
     setHomeMode('personal');
+    setShowGroupSelector(false);
+    setIsModeMenuOpen(false);
     setGroupGateActionMode(null);
     setTab('home');
   }
 
   function renderNeedsGroupPage(pageId) {
     const pageMeta = {
-      tasks: { title: '任務', icon: 'check', message: '任務分派需要先選擇一個共讀群組。請到設定裡選擇、建立或加入群組。' },
-      treasure: { title: '國庫', icon: 'bag', message: '國庫卡牌池需要先選擇一個共讀群組。請到設定裡選擇、建立或加入群組。' },
-      'my-vault': { title: '寶庫', icon: 'star', message: '我的寶庫會顯示你在群組中抽到的獎勵卡。請先選擇一個共讀群組。' },
-      notifications: { title: '通知', icon: 'bell', message: '群組通知需要先選擇一個共讀群組。請到設定裡選擇、建立或加入群組。' },
-      history: { title: '歷程紀錄', icon: 'hourglass', message: '歷程紀錄需要先選擇一個共讀群組。請到設定裡選擇、建立或加入群組。' },
+      tasks: { title: '任務', icon: 'check' },
+      treasure: { title: '國庫', icon: 'bag' },
+      'my-vault': { title: '寶庫', icon: 'star' },
+      notifications: { title: '通知', icon: 'bell' },
+      history: { title: '歷程紀錄', icon: 'hourglass' },
     };
-    const meta = pageMeta[pageId] || { title: '共讀功能', icon: 'friends', message: '請先選擇一個共讀群組。' };
+    const meta = pageMeta[pageId] || { title: '共讀功能', icon: 'friends' };
 
     return (
       <section className="white-card no-group-card home-card">
@@ -440,26 +477,12 @@ export default function App() {
           <UiIcon name={meta.icon} className="section-icon" />
           {meta.title}
         </div>
-        <p>{meta.message}</p>
-        {userGroups.length > 0 && (
-          <div className="joined-group-list compact-group-list">
-            {userGroups.map((group) => (
-              <button
-                key={group.id}
-                type="button"
-                className={`joined-group-chip ${String(session?.group?.id) === String(group.id) ? 'active' : ''}`}
-                onClick={() => selectGroup(group)}
-              >
-                {group.name}
-              </button>
-            ))}
-          </div>
-        )}
+        <p>此功能需要先選擇共讀群組。可以使用右上角選單切換群組，或到設定中的共讀群組管理建立 / 加入群組。</p>
         <div className="no-group-actions">
           <button
             className="primary-btn compact inline-action"
             type="button"
-            onClick={() => goToTab('settings')}
+            onClick={openGroupSelector}
           >
             <UiIcon name="gear" /> 前往設定
           </button>
@@ -478,12 +501,18 @@ export default function App() {
             <div>
               <small className="icon-meta"><UiIcon name="sprout" /> 個人讀書模式</small>
               <h2>今天也一起好好讀書</h2>
-              <p>你目前正在使用個人讀書模式。可以先自己讀書，也可以到設定裡建立或加入共讀群組。</p>
+              <p>你目前正在使用個人讀書模式。可以先自己讀書，也可以到設定裡的共讀群組管理建立或加入群組。</p>
             </div>
           </div>
         </section>
 
         <StudyMonitor
+          session={session}
+          currentGroup={null}
+          setToast={showToast}
+          onUserCoinsUpdated={updateUserCoins}
+        />
+        <CheckinCard
           session={session}
           currentGroup={null}
           setToast={showToast}
@@ -502,7 +531,7 @@ export default function App() {
           <div className="no-group-actions">
             <button className="primary-btn compact inline-action" type="button" onClick={() => {
               setGroupGateActionMode(null);
-              goToTab('settings');
+              openGroupSelector();
             }}>
               <UiIcon name="gear" /> 前往設定
             </button>
@@ -525,47 +554,52 @@ export default function App() {
             />
             <h1 className="settings-title">設定</h1>
           </div>
-          <div className="settings-section-title">目前模式</div>
+          <div className="settings-section-title">目前狀態</div>
           {hasGroup ? (
-            <p>目前群組：{session.group.name}</p>
+            <p>目前模式：群組讀書模式｜目前群組：{session.group.name}</p>
           ) : (
-            <p>目前使用：個人讀書模式</p>
+            <p>目前模式：個人讀書模式</p>
           )}
-          {hasGroup && (
-            <div className="settings-action-row">
-              <button className="settings-action-button" type="button" onClick={switchToPersonalMode}>
-                <UiIcon name="cat-book" /> 切換到個人讀書模式
-              </button>
+        </section>
+
+        <section className="settings-card settings-group-management-card group-management-card home-card">
+          <div className="group-management-status">
+            <div className="settings-section-title"><UiIcon name="friends" /> 共讀群組管理</div>
+            <p className="group-management-description">選擇、建立或加入共讀群組，讓任務、金幣與國庫獎勵可以一起累積。</p>
+          </div>
+
+          <div className="settings-action-row group-management-actions">
+            <button
+              className="settings-action-button group-management-button group-selector-toggle"
+              type="button"
+              onClick={toggleGroupSelector}
+            >
+              <UiIcon name="friends" /> 共讀群組管理
+            </button>
+          </div>
+
+          {showGroupSelector && (
+            <div className="group-selector-panel">
+              <JoinCastle
+                user={session.user}
+                groups={userGroups}
+                onCreateGroup={createGroup}
+                onJoinGroup={joinGroup}
+                forcedActionMode={groupGateActionMode}
+                onActionModeChange={setGroupGateActionMode}
+                currentGroupId={session?.group?.id}
+              />
             </div>
           )}
         </section>
-        <section className="settings-card settings-group-card home-card">
-          <h3 className="settings-section-title"><UiIcon name="friends" /> 共讀群組管理</h3>
-          <p>可以在這裡建立群組、加入群組、切換已加入的共讀群組。</p>
-        </section>
-        <JoinCastle
-          user={session.user}
-          groups={userGroups}
-          onCreateGroup={createGroup}
-          onJoinGroup={joinGroup}
-          onSelectGroup={selectGroup}
-          forcedActionMode={groupGateActionMode}
-          onActionModeChange={setGroupGateActionMode}
-          onSwitchToPersonal={switchToPersonalMode}
-          currentGroupId={session?.group?.id}
-        />
       </div>
     );
   }
 
+
   function renderGroupHome() {
     return (
       <>
-        <section className="white-card home-card personal-mode-switch-card">
-          <button className="note-button secondary" type="button" onClick={switchToPersonalMode}>
-            <UiIcon name="cat-book" /> 切換到個人讀書模式
-          </button>
-        </section>
         <GroupNameHeader
           session={session}
           groupInfo={groupInfo}
@@ -575,6 +609,13 @@ export default function App() {
         />
         <TopMessage />
         <StudyMonitor
+          session={session}
+          currentGroup={session.group}
+          refresh={refresh}
+          setToast={showToast}
+          onUserCoinsUpdated={updateUserCoins}
+        />
+        <CheckinCard
           session={session}
           currentGroup={session.group}
           refresh={refresh}
@@ -597,7 +638,7 @@ export default function App() {
     );
   }
 
-  const shouldShowBackButton = Boolean(session) && tab === 'settings' && Boolean(groupGateActionMode);
+  const shouldShowBackButton = Boolean(session) && tab === 'settings' && (showGroupSelector || Boolean(groupGateActionMode));
 
   if (!session) return <Login onLogin={loginAndEnterHome} />;
 
@@ -623,6 +664,80 @@ export default function App() {
         <LogOut size={18} />
         登出
       </button>
+      <button
+        type="button"
+        className="mode-menu-button"
+        onClick={() => setIsModeMenuOpen(true)}
+        aria-label="開啟讀書模式選單"
+      >
+        ☰
+      </button>
+      {isModeMenuOpen && (
+        <div className="mode-sidebar-backdrop" onClick={() => setIsModeMenuOpen(false)}>
+          <aside className="mode-sidebar" onClick={(event) => event.stopPropagation()} aria-label="讀書模式選單">
+            <div className="mode-sidebar-header">
+              <h2 className="mode-sidebar-title">讀書模式</h2>
+              <button
+                type="button"
+                className="mode-sidebar-close"
+                onClick={() => setIsModeMenuOpen(false)}
+                aria-label="關閉讀書模式選單"
+              >
+                ×
+              </button>
+            </div>
+
+            <section className="mode-sidebar-section">
+              <div className="mode-sidebar-helper">目前模式</div>
+              <div className="mode-sidebar-current">
+                {hasGroup ? `目前：${session.group.name}` : '目前：個人讀書模式'}
+              </div>
+            </section>
+
+            <section className="mode-sidebar-section">
+              <div className="mode-sidebar-helper">模式切換</div>
+              <button
+                type="button"
+                className={`mode-sidebar-option ${!hasGroup ? 'active' : ''}`}
+                onClick={switchToPersonalMode}
+              >
+                <UiIcon name="cat-book" /> 個人讀書模式
+              </button>
+            </section>
+
+            <section className="mode-sidebar-section">
+              <div className="mode-sidebar-helper">已加入的共讀群組</div>
+              {userGroups.length > 0 ? (
+                <div className="mode-sidebar-group-list">
+                  {userGroups.map((group) => (
+                    <button
+                      key={group.id}
+                      type="button"
+                      className={`mode-sidebar-option ${String(session?.group?.id) === String(group.id) ? 'active' : ''}`}
+                      onClick={() => selectGroupFromModeMenu(group)}
+                    >
+                      <UiIcon name="flag" /> {group.name}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mode-sidebar-helper">尚未加入任何共讀群組</p>
+              )}
+            </section>
+
+            <section className="mode-sidebar-section">
+              <button
+                type="button"
+                className="mode-sidebar-manage-button"
+                onClick={openGroupSelector}
+              >
+                <UiIcon name="gear" /> 前往共讀群組管理
+              </button>
+            </section>
+          </aside>
+        </div>
+      )}
+
       <div className="toast-stack" aria-live="polite" aria-atomic="true">
         {toasts.map((toast) => (
           <div className={`toast-note ${toast.type} ${toast.leaving ? 'leaving' : ''}`} key={toast.id}>

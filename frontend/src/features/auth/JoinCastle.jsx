@@ -8,9 +8,9 @@ export default function JoinCastle({
   onCreateGroup,
   onJoinGroup,
   onSelectGroup,
+  showGroupSwitch = false,
   forcedActionMode,
   onActionModeChange,
-  onSwitchToPersonal,
   currentGroupId,
 }) {
   const [joinPasscode, setJoinPasscode] = useState('');
@@ -60,9 +60,15 @@ export default function JoinCastle({
             <p>選擇一個群組進入共讀模式，也可以建立新群組或加入朋友的群組。</p>
             <div className="joined-group-list compact">
               {groups.map((group) => (
-                <button className={String(currentGroupId) === String(group.id) ? 'active' : ''} type="button" key={group.id} onClick={() => onSelectGroup(group)}>
-                  <UiIcon name="flag" /> {group.name}
-                </button>
+                showGroupSwitch && onSelectGroup ? (
+                  <button className={String(currentGroupId) === String(group.id) ? 'active' : ''} type="button" key={group.id} onClick={() => onSelectGroup(group)}>
+                    <UiIcon name="flag" /> {group.name}
+                  </button>
+                ) : (
+                  <div className={String(currentGroupId) === String(group.id) ? 'active joined-group-info' : 'joined-group-info'} key={group.id}>
+                    <UiIcon name="flag" /> {group.name}
+                  </div>
+                )
               ))}
             </div>
           </>
@@ -81,11 +87,6 @@ export default function JoinCastle({
             <UiIcon name="key" /> 加入群組
           </button>
         </div>
-        {currentGroupId && (
-          <button className="note-button secondary personal-mode-button" type="button" onClick={onSwitchToPersonal}>
-            <UiIcon name="cat-book" /> 切換到個人讀書模式
-          </button>
-        )}
       </div>
 
       <div className="group-gate-grid single-form">
