@@ -12,3 +12,5 @@ backend/studymeal.db
 frontend/node_modules/
 frontend/dist/
 backend/local-backend.log
+backend/*.log
+frontend/*.log

@@ -6,6 +6,7 @@ const TABS = [
   { id: 'treasure', label: '國庫', icon: 'bag' },
   { id: 'my-vault', label: '寶庫', icon: 'star' },
   { id: 'notifications', label: '通知', icon: 'bell' },
+  { id: 'history', label: '歷程', icon: 'hourglass' },
   { id: 'stats', label: '統計', icon: 'task-list' },
   { id: 'settings', label: '設定', icon: 'gear' },
 ];

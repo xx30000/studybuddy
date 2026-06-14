@@ -53,6 +53,14 @@ if DATABASE_URL.startswith("postgres://"):
 USE_POSTGRES = bool(DATABASE_URL)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "*").strip() or "*"
 FRONTEND_ORIGINS = [origin.strip() for origin in FRONTEND_URL.split(",") if origin.strip()]
+DEV_FRONTEND_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
+if FRONTEND_URL != "*":
+    FRONTEND_ORIGINS = list(dict.fromkeys(FRONTEND_ORIGINS + DEV_FRONTEND_ORIGINS))
 
 app = Flask(__name__)
 try:
@@ -60,6 +68,19 @@ try:
 except Exception:
     app.config["JSON_AS_ASCII"] = False
 CORS(app, origins=FRONTEND_ORIGINS if FRONTEND_URL != "*" else "*")
+
+
+@app.after_request
+def add_cors_headers(response):
+    origin = request.headers.get("Origin")
+    if FRONTEND_URL == "*":
+        response.headers["Access-Control-Allow-Origin"] = origin or "*"
+    elif origin in FRONTEND_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Vary"] = "Origin"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
 
 TASK_REWARDS = [20, 25, 30, 35, 40, 45, 50]
 DRAW_COST = 50
