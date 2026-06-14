@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { api } from './lib/api.js';
 import Login from './features/auth/Login.jsx';
@@ -29,6 +29,20 @@ function toastIconName(message, type) {
 }
 
 
+
+function applyStoredAppearance() {
+  const theme = localStorage.getItem('studybuddy_theme') || 'blue';
+  const fontSize = localStorage.getItem('studybuddy_font_size') || 'medium';
+  const sizeScale = {
+    small: '0.94',
+    medium: '1',
+    large: '1.08',
+  };
+  document.body.classList.remove('theme-blue', 'theme-milk-tea', 'theme-pink', 'theme-green');
+  document.body.classList.add(`theme-${theme}`);
+  document.documentElement.style.setProperty('--app-font-scale', sizeScale[fontSize] || '1');
+}
+
 export default function App() {
   const [session, setSession] = useState(() => {
     const saved = localStorage.getItem('study_session');
@@ -43,16 +57,32 @@ export default function App() {
   const [myRewardCards, setMyRewardCards] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [announcements, setAnnouncements] = useState([]);
+  const [tasksLoadState, setTasksLoadState] = useState(() => ({
+    isLoading: Boolean(session?.group?.id),
+    hasLoaded: false,
+    groupId: session?.group?.id || null,
+  }));
+  const [announcementsLoadState, setAnnouncementsLoadState] = useState(() => ({
+    isLoading: Boolean(session?.group?.id),
+    hasLoaded: false,
+    groupId: session?.group?.id || null,
+  }));
   const [userGroups, setUserGroups] = useState([]);
   const [toasts, setToasts] = useState([]);
+  const recentToastRef = useRef(new Map());
   const [showGroupGate, setShowGroupGate] = useState(false);
   const [showGroupSelector, setShowGroupSelector] = useState(false);
+  const [isGroupChatOpen, setIsGroupChatOpen] = useState(false);
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false);
   const [groupGateActionMode, setGroupGateActionMode] = useState(null);
   const [homeMode, setHomeMode] = useState(() => (session?.group?.id ? 'group' : 'personal'));
 
   const hasGroup = homeMode === 'group' && Boolean(session?.group?.id);
   const lastGroupKey = session?.user?.id ? `lastGroupId_${session.user.id}` : null;
+
+  useEffect(() => {
+    applyStoredAppearance();
+  }, []);
 
   function clearStoredTabState() {
     localStorage.removeItem('activeTab');
@@ -79,9 +109,11 @@ export default function App() {
     setMyRewardCards([]);
     setNotifications([]);
     setAnnouncements([]);
+    resetGroupLoadStates();
     setUserGroups([]);
     setShowGroupGate(false);
     setShowGroupSelector(false);
+    setIsGroupChatOpen(false);
     setIsModeMenuOpen(false);
     setGroupGateActionMode(null);
     setHomeMode('personal');
@@ -89,9 +121,53 @@ export default function App() {
     setTab('home');
   }
 
-  function showToast(message, type = 'info') {
+  function markTasksLoading(groupId) {
+    setTasksLoadState((current) => ({
+      isLoading: true,
+      hasLoaded: current.groupId === groupId ? current.hasLoaded : false,
+      groupId,
+    }));
+  }
+
+  function markAnnouncementsLoading(groupId) {
+    setAnnouncementsLoadState((current) => ({
+      isLoading: true,
+      hasLoaded: current.groupId === groupId ? current.hasLoaded : false,
+      groupId,
+    }));
+  }
+
+  function resetGroupLoadStates() {
+    setTasksLoadState({ isLoading: false, hasLoaded: false, groupId: null });
+    setAnnouncementsLoadState({ isLoading: false, hasLoaded: false, groupId: null });
+  }
+
+  function shownToastStorageKey() {
+    return `shown_toast_event_keys_${session?.user?.id || 'guest'}`;
+  }
+
+  function readShownToastEventKeys() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(shownToastStorageKey()) || '[]');
+      return new Set(Array.isArray(stored) ? stored.filter(Boolean) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function rememberToastEventKey(eventKey) {
+    const shownKeys = readShownToastEventKeys();
+    shownKeys.add(eventKey);
+    localStorage.setItem(shownToastStorageKey(), JSON.stringify([...shownKeys].slice(-200)));
+  }
+
+  function enqueueToast(message, type = 'info') {
+    if (localStorage.getItem('settings_notify_toast') === 'false') return;
+    const normalizedMessage = String(message || '').trim();
+    if (!normalizedMessage) return;
+
     const id = `${Date.now()}-${Math.random()}`;
-    setToasts((current) => [...current, { id, message, type, leaving: false }]);
+    setToasts((current) => [...current, { id, message: normalizedMessage, type, leaving: false }]);
     setTimeout(() => {
       setToasts((current) => current.map((toast) => (
         toast.id === id ? { ...toast, leaving: true } : toast
@@ -100,6 +176,33 @@ export default function App() {
     setTimeout(() => {
       setToasts((current) => current.filter((toast) => toast.id !== id));
     }, 3000);
+  }
+
+  function showToastOnce(eventKey, message, type = 'info') {
+    const normalizedKey = String(eventKey || '').trim();
+    if (!normalizedKey) {
+      enqueueToast(message, type);
+      return true;
+    }
+    const shownKeys = readShownToastEventKeys();
+    if (shownKeys.has(normalizedKey)) return false;
+    rememberToastEventKey(normalizedKey);
+    enqueueToast(message, type);
+    return true;
+  }
+
+  function showToast(message, type = 'info', eventKey = null) {
+    if (eventKey) return showToastOnce(eventKey, message, type);
+
+    const normalizedMessage = String(message || '').trim();
+    if (!normalizedMessage) return false;
+    const dedupeKey = `${type}:${normalizedMessage}`;
+    const nowTime = Date.now();
+    const lastShownAt = recentToastRef.current.get(dedupeKey) || 0;
+    if (nowTime - lastShownAt < 10000) return false;
+    recentToastRef.current.set(dedupeKey, nowTime);
+    enqueueToast(normalizedMessage, type);
+    return true;
   }
 
   function updateUserCoins(nextCoins) {
@@ -138,10 +241,24 @@ export default function App() {
   async function refreshAnnouncements() {
     if (!session?.group?.id || !session?.user?.id) {
       setAnnouncements([]);
+      setAnnouncementsLoadState({ isLoading: false, hasLoaded: false, groupId: null });
       return;
     }
-    const data = await api(`/groups/${session.group.id}/announcements`);
-    setAnnouncements(data.announcements || []);
+
+    const gid = session.group.id;
+    markAnnouncementsLoading(gid);
+    try {
+      const data = await api(`/groups/${gid}/announcements`);
+      setAnnouncements(data.announcements || []);
+      setAnnouncementsLoadState({ isLoading: false, hasLoaded: true, groupId: gid });
+    } catch (error) {
+      setAnnouncementsLoadState((current) => ({
+        isLoading: false,
+        hasLoaded: current.groupId === gid ? current.hasLoaded : false,
+        groupId: gid,
+      }));
+      throw error;
+    }
   }
 
   function updateCurrentGroup(nextGroup) {
@@ -161,8 +278,12 @@ export default function App() {
     saveSession({ ...session, group: nextGroup });
     setGroupInfo({ group: nextGroup, members: nextGroup.members || [] });
     setAnnouncements(nextGroup.announcements || []);
+    setAnnouncementsLoadState({ isLoading: false, hasLoaded: true, groupId: nextGroup.id });
+    setTasks([]);
+    setTasksLoadState({ isLoading: true, hasLoaded: false, groupId: nextGroup.id });
     setShowGroupGate(false);
     setShowGroupSelector(false);
+    setIsGroupChatOpen(false);
     setIsModeMenuOpen(false);
     setGroupGateActionMode(null);
     setHomeMode('group');
@@ -218,6 +339,7 @@ export default function App() {
     setMyRewardCards([]);
     setNotifications([]);
     setAnnouncements([]);
+    resetGroupLoadStates();
   }
 
   async function refreshHomeData() {
@@ -227,12 +349,23 @@ export default function App() {
     }
 
     const gid = session.group.id;
-    const [group, announcementData] = await Promise.all([
-      api(`/group/${gid}`),
-      api(`/groups/${gid}/announcements`),
-    ]);
-    setGroupInfo(group);
-    setAnnouncements(announcementData.announcements || []);
+    markAnnouncementsLoading(gid);
+    try {
+      const [group, announcementData] = await Promise.all([
+        api(`/group/${gid}`),
+        api(`/groups/${gid}/announcements`),
+      ]);
+      setGroupInfo(group);
+      setAnnouncements(announcementData.announcements || []);
+      setAnnouncementsLoadState({ isLoading: false, hasLoaded: true, groupId: gid });
+    } catch (error) {
+      setAnnouncementsLoadState((current) => ({
+        isLoading: false,
+        hasLoaded: current.groupId === gid ? current.hasLoaded : false,
+        groupId: gid,
+      }));
+      throw error;
+    }
   }
 
   async function refreshTaskData() {
@@ -242,12 +375,23 @@ export default function App() {
     }
 
     const gid = session.group.id;
-    const [group, taskList] = await Promise.all([
-      api(`/group/${gid}`),
-      api(`/groups/${gid}/tasks`),
-    ]);
-    setGroupInfo(group);
-    setTasks(taskList.tasks || taskList);
+    markTasksLoading(gid);
+    try {
+      const [group, taskList] = await Promise.all([
+        api(`/group/${gid}`),
+        api(`/groups/${gid}/tasks`),
+      ]);
+      setGroupInfo(group);
+      setTasks(taskList.tasks || taskList);
+      setTasksLoadState({ isLoading: false, hasLoaded: true, groupId: gid });
+    } catch (error) {
+      setTasksLoadState((current) => ({
+        isLoading: false,
+        hasLoaded: current.groupId === gid ? current.hasLoaded : false,
+        groupId: gid,
+      }));
+      throw error;
+    }
   }
 
   async function refreshTreasureData() {
@@ -341,10 +485,14 @@ export default function App() {
       saveSession({ ...session, group: data.group, user: data.user || session.user });
       setGroupInfo({ group: data.group, members: data.group.members || [] });
       setAnnouncements(data.group.announcements || []);
+      setAnnouncementsLoadState({ isLoading: false, hasLoaded: true, groupId: data.group.id });
+      setTasks([]);
+      setTasksLoadState({ isLoading: true, hasLoaded: false, groupId: data.group.id });
       loadUserGroups(false).catch(() => {});
-      showToast(`已加入 ${data.group.name}`, 'success');
+      showToast(`已加入 ${data.group.name}`, 'success', `group-joined:${session.user.id}:${data.group.id}`);
       setShowGroupGate(false);
       setShowGroupSelector(false);
+      setIsGroupChatOpen(false);
       setIsModeMenuOpen(false);
       setGroupGateActionMode(null);
       setHomeMode('group');
@@ -366,10 +514,14 @@ export default function App() {
       saveSession({ ...session, group: data.group });
       setGroupInfo({ group: data.group, members: data.group.members || [] });
       setAnnouncements(data.group.announcements || []);
+      setAnnouncementsLoadState({ isLoading: false, hasLoaded: true, groupId: data.group.id });
+      setTasks([]);
+      setTasksLoadState({ isLoading: true, hasLoaded: false, groupId: data.group.id });
       loadUserGroups(false).catch(() => {});
-      showToast(`已建立 ${data.group.name}`, 'success');
+      showToast(`已建立 ${data.group.name}`, 'success', `group-created:${session.user.id}:${data.group.id}`);
       setShowGroupGate(false);
       setShowGroupSelector(false);
+      setIsGroupChatOpen(false);
       setIsModeMenuOpen(false);
       setGroupGateActionMode(null);
       setHomeMode('group');
@@ -386,6 +538,7 @@ export default function App() {
     saveSession({ ...data, group: null });
     setShowGroupGate(false);
     setShowGroupSelector(false);
+    setIsGroupChatOpen(false);
     setIsModeMenuOpen(false);
     setGroupGateActionMode(null);
     setHomeMode('personal');
@@ -396,7 +549,7 @@ export default function App() {
   async function selectGroupFromModeMenu(group) {
     try {
       await enterGroup(group);
-      showToast(`已切換到 ${group.name}`, 'success');
+      showToast(`已切換到 ${group.name}`, 'success', `group-selected:${session.user.id}:${group.id}`);
     } catch (err) {
       showToast(err.message || '切換群組失敗', 'error');
     }
@@ -466,8 +619,10 @@ export default function App() {
     setRewardCards([]);
     setNotifications([]);
     setAnnouncements([]);
+    resetGroupLoadStates();
     setHomeMode('personal');
     setShowGroupSelector(false);
+    setIsGroupChatOpen(false);
     setIsModeMenuOpen(false);
     setGroupGateActionMode(null);
     setTab('home');
@@ -606,12 +761,8 @@ export default function App() {
           refreshAnnouncements={refreshAnnouncements}
           refresh={refresh}
           setToast={showToast}
-        />
-        <GroupChat
-          currentGroup={session.group}
-          user={session.user}
-          latestAnnouncement={announcements[announcements.length - 1] || null}
-          setToast={showToast}
+          isLoading={announcementsLoadState.isLoading}
+          hasLoaded={announcementsLoadState.hasLoaded}
         />
         <ProfileCard
           session={session}
@@ -655,6 +806,16 @@ export default function App() {
       >
         ☰
       </button>
+      {hasGroup && (
+        <button
+          type="button"
+          className="group-chat-floating-button"
+          onClick={() => setIsGroupChatOpen(true)}
+          aria-label="開啟群組聊天"
+        >
+          <UiIcon name="message" />
+        </button>
+      )}
       {isModeMenuOpen && (
         <div className="mode-sidebar-backdrop" onClick={() => setIsModeMenuOpen(false)}>
           <aside className="mode-sidebar" onClick={(event) => event.stopPropagation()} aria-label="讀書模式選單">
@@ -721,6 +882,35 @@ export default function App() {
         </div>
       )}
 
+      {hasGroup && isGroupChatOpen && (
+        <div className="group-chat-sidebar-backdrop" onClick={() => setIsGroupChatOpen(false)}>
+          <aside className="group-chat-sidebar" onClick={(event) => event.stopPropagation()} aria-label="群組聊天室">
+            <div className="group-chat-sidebar-header">
+              <div>
+                <h2 className="group-chat-sidebar-title">群組聊天室</h2>
+                <p className="group-chat-sidebar-subtitle">目前群組：{session.group.name}</p>
+              </div>
+              <button
+                type="button"
+                className="group-chat-sidebar-close"
+                onClick={() => setIsGroupChatOpen(false)}
+                aria-label="關閉群組聊天"
+              >
+                ×
+              </button>
+            </div>
+            <div className="group-chat-sidebar-body">
+              <GroupChat
+                currentGroup={session.group}
+                user={session.user}
+                latestAnnouncement={announcements[announcements.length - 1] || null}
+                setToast={showToast}
+              />
+            </div>
+          </aside>
+        </div>
+      )}
+
       <div className="toast-stack" aria-live="polite" aria-atomic="true">
         {toasts.map((toast) => (
           <div className={`toast-note ${toast.type} ${toast.leaving ? 'leaving' : ''}`} key={toast.id}>
@@ -754,6 +944,8 @@ export default function App() {
                   tasks={tasks}
                   refresh={refresh}
                   setToast={showToast}
+                  isLoading={tasksLoadState.isLoading}
+                  hasLoaded={tasksLoadState.hasLoaded}
                 />
               )}
               {tab === 'treasure' && (

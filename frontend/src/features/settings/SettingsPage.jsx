@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import JoinCastle from '../auth/JoinCastle.jsx';
 import FriendsPage from '../friends/FriendsPage.jsx';
 import { UiIcon } from '../../lib/icons.js';
@@ -11,10 +12,10 @@ import {
 } from '../../lib/api.js';
 
 const THEMES = [
-  { id: 'blue', label: '淡藍筆記', helper: '清爽、安靜，適合長時間讀書' },
-  { id: 'milk-tea', label: '奶茶紙感', helper: '溫暖、柔和，像手帳頁面' },
-  { id: 'pink', label: '淡粉便利貼', helper: '可愛但不刺眼' },
-  { id: 'green', label: '嫩芽綠', helper: '放鬆、乾淨，適合早晨讀書' },
+  { id: 'blue', label: '淡藍筆記' },
+  { id: 'milk-tea', label: '奶茶紙感' },
+  { id: 'pink', label: '淡粉便利貼' },
+  { id: 'green', label: '嫩芽綠' },
 ];
 
 const FONT_SIZES = [
@@ -65,6 +66,11 @@ export default function SettingsPage({
     new_password: '',
     confirm_password: '',
   });
+  const [visiblePasswords, setVisiblePasswords] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
   const [avatarPreview, setAvatarPreview] = useState(user.avatar_data || '');
   const [theme, setTheme] = useState(() => localStorage.getItem('studybuddy_theme') || 'blue');
   const [fontSize, setFontSize] = useState(() => localStorage.getItem('studybuddy_font_size') || 'medium');
@@ -91,6 +97,11 @@ export default function SettingsPage({
     localStorage.setItem('studybuddy_font_size', fontSize);
   }, [theme, fontSize]);
 
+  function handleThemeChange(nextTheme) {
+    setTheme(nextTheme);
+    setToast?.('主題已切換', 'success', `theme-changed:${user.id}:${nextTheme}`);
+  }
+
   function updateNotificationSetting(key, checked) {
     setNotificationSettings((current) => ({ ...current, [key]: checked }));
     localStorage.setItem(key, String(checked));
@@ -106,7 +117,7 @@ export default function SettingsPage({
     try {
       const data = await updateUserProfile(user.id, { nickname });
       onUserUpdated?.(data.user);
-      setToast?.(data.message || '個人資料已更新', 'success');
+      setToast?.(data.message || '個人資料已更新', 'success', `profile-updated:${user.id}:${Date.now()}`);
     } catch (err) {
       setToast?.(err.message || '個人資料更新失敗', 'error');
     }
@@ -114,6 +125,11 @@ export default function SettingsPage({
 
   function resetPasswordForm() {
     setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
+    setVisiblePasswords({ current: false, next: false, confirm: false });
+  }
+
+  function togglePasswordVisibility(field) {
+    setVisiblePasswords((current) => ({ ...current, [field]: !current[field] }));
   }
 
   function cancelPasswordEdit() {
@@ -138,7 +154,7 @@ export default function SettingsPage({
       });
       resetPasswordForm();
       setIsPasswordEditing(false);
-      setToast?.(data.message || '密碼已更新', 'success');
+      setToast?.(data.message || '密碼已更新', 'success', `password-updated:${user.id}:${Date.now()}`);
     } catch (err) {
       setToast?.(err.message || '密碼更新失敗', 'error');
     }
@@ -163,7 +179,7 @@ export default function SettingsPage({
         const data = await updateUserAvatar(user.id, avatarData);
         setAvatarPreview(data.user?.avatar_data || avatarData);
         onUserUpdated?.(data.user);
-        setToast?.(data.message || '頭像已更新', 'success');
+        setToast?.(data.message || '頭像已更新', 'success', `avatar-updated:${user.id}:${Date.now()}`);
       } catch (err) {
         setToast?.(err.message || '頭像更新失敗', 'error');
       }
@@ -176,7 +192,7 @@ export default function SettingsPage({
       const data = await deleteUserAvatar(user.id);
       setAvatarPreview('');
       onUserUpdated?.(data.user);
-      setToast?.(data.message || '頭像已移除', 'success');
+      setToast?.(data.message || '頭像已移除', 'success', `avatar-removed:${user.id}:${Date.now()}`);
     } catch (err) {
       setToast?.(err.message || '頭像移除失敗', 'error');
     }
@@ -187,7 +203,7 @@ export default function SettingsPage({
     localStorage.removeItem('study_active_tab');
     localStorage.removeItem('studybuddy_active_tab');
     localStorage.removeItem('study_selected_group_id');
-    setToast?.('本機導覽快取已清除', 'success');
+    setToast?.('本機導覽快取已清除', 'success', `navigation-cache-cleared:${user.id}:${Date.now()}`);
   }
 
   function resetLocalSettings() {
@@ -200,7 +216,7 @@ export default function SettingsPage({
       acc[item.key] = true;
       return acc;
     }, {}));
-    setToast?.('本機設定已恢復預設', 'success');
+    setToast?.('本機設定已恢復預設', 'success', `local-settings-reset:${user.id}:${Date.now()}`);
   }
 
   return (
@@ -291,36 +307,66 @@ export default function SettingsPage({
           <form className="password-edit-panel" onSubmit={savePassword}>
             <label className="password-field-row">
               <span>目前密碼</span>
-              <input
-                className="settings-input"
-                type="password"
-                value={passwordForm.current_password}
-                onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))}
-                placeholder="輸入目前密碼"
-                autoComplete="current-password"
-              />
+              <div className="password-input-wrap">
+                <input
+                  className="settings-input password-input"
+                  type={visiblePasswords.current ? 'text' : 'password'}
+                  value={passwordForm.current_password}
+                  onChange={(event) => setPasswordForm((current) => ({ ...current, current_password: event.target.value }))}
+                  placeholder="輸入目前密碼"
+                  autoComplete="current-password"
+                />
+                <button
+                  className="password-toggle-button"
+                  type="button"
+                  onClick={() => togglePasswordVisibility('current')}
+                  aria-label={visiblePasswords.current ? '隱藏密碼' : '顯示密碼'}
+                >
+                  {visiblePasswords.current ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </label>
             <label className="password-field-row">
               <span>新密碼</span>
-              <input
-                className="settings-input"
-                type="password"
-                value={passwordForm.new_password}
-                onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))}
-                placeholder="輸入新密碼"
-                autoComplete="new-password"
-              />
+              <div className="password-input-wrap">
+                <input
+                  className="settings-input password-input"
+                  type={visiblePasswords.next ? 'text' : 'password'}
+                  value={passwordForm.new_password}
+                  onChange={(event) => setPasswordForm((current) => ({ ...current, new_password: event.target.value }))}
+                  placeholder="輸入新密碼"
+                  autoComplete="new-password"
+                />
+                <button
+                  className="password-toggle-button"
+                  type="button"
+                  onClick={() => togglePasswordVisibility('next')}
+                  aria-label={visiblePasswords.next ? '隱藏密碼' : '顯示密碼'}
+                >
+                  {visiblePasswords.next ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </label>
             <label className="password-field-row">
               <span>確認新密碼</span>
-              <input
-                className="settings-input"
-                type="password"
-                value={passwordForm.confirm_password}
-                onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))}
-                placeholder="再次輸入新密碼"
-                autoComplete="new-password"
-              />
+              <div className="password-input-wrap">
+                <input
+                  className="settings-input password-input"
+                  type={visiblePasswords.confirm ? 'text' : 'password'}
+                  value={passwordForm.confirm_password}
+                  onChange={(event) => setPasswordForm((current) => ({ ...current, confirm_password: event.target.value }))}
+                  placeholder="再次輸入新密碼"
+                  autoComplete="new-password"
+                />
+                <button
+                  className="password-toggle-button"
+                  type="button"
+                  onClick={() => togglePasswordVisibility('confirm')}
+                  aria-label={visiblePasswords.confirm ? '隱藏密碼' : '顯示密碼'}
+                >
+                  {visiblePasswords.confirm ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </label>
             <div className="password-actions">
               <button className="settings-button secondary" type="submit">更新密碼</button>
@@ -340,10 +386,9 @@ export default function SettingsPage({
               className={`theme-option theme-${item.id}-preview ${theme === item.id ? 'active' : ''}`}
               key={item.id}
               type="button"
-              onClick={() => setTheme(item.id)}
+              onClick={() => handleThemeChange(item.id)}
             >
               <strong>{item.label}</strong>
-              <span>{item.helper}</span>
             </button>
           ))}
         </div>

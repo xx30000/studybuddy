@@ -23,6 +23,16 @@ function avatarLabel(name) {
   return (name || '用').trim().slice(0, 1);
 }
 
+function isChatNearBottom(chatBox) {
+  if (!chatBox) return false;
+  return chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight < 80;
+}
+
+function scrollChatToBottom(chatBox) {
+  if (!chatBox) return;
+  chatBox.scrollTop = chatBox.scrollHeight;
+}
+
 export default function GroupChat({
   currentGroup,
   user,
@@ -35,7 +45,8 @@ export default function GroupChat({
   const [draft, setDraft] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const messagesEndRef = useRef(null);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(false);
+  const chatMessagesRef = useRef(null);
 
   const announcementText = latestAnnouncement?.content || currentGroup?.announcement || '';
 
@@ -44,10 +55,17 @@ export default function GroupChat({
       setMessages([]);
       return;
     }
+
+    const chatBox = chatMessagesRef.current;
+    const wasNearBottom = isChatNearBottom(chatBox);
+
     if (showLoading) setIsLoading(true);
     try {
       const data = await getGroupChatMessages(groupId, userId, 50);
       setMessages(data.messages || []);
+      if (wasNearBottom) {
+        setShouldAutoScroll(true);
+      }
     } catch (error) {
       setToast?.(error.message || '聊天室訊息載入失敗', 'error');
     } finally {
@@ -65,8 +83,10 @@ export default function GroupChat({
   }, [groupId, userId, loadMessages]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages]);
+    if (!shouldAutoScroll) return;
+    scrollChatToBottom(chatMessagesRef.current);
+    setShouldAutoScroll(false);
+  }, [messages, shouldAutoScroll]);
 
   async function handleSend() {
     const message = draft.trim();
@@ -82,6 +102,7 @@ export default function GroupChat({
     try {
       const data = await sendGroupChatMessage(groupId, userId, message);
       setDraft('');
+      setShouldAutoScroll(true);
       if (data.chat_message) {
         setMessages((prev) => [...prev, data.chat_message]);
       } else {
@@ -102,10 +123,14 @@ export default function GroupChat({
   }
 
   async function handleDelete(messageId) {
+    const wasNearBottom = isChatNearBottom(chatMessagesRef.current);
     try {
       await deleteGroupChatMessage(groupId, messageId, userId);
       setMessages((prev) => prev.filter((message) => message.id !== messageId));
-      setToast?.('訊息已刪除', 'success');
+      if (wasNearBottom) {
+        setShouldAutoScroll(true);
+      }
+      setToast?.('訊息已刪除', 'success', `chat-message-deleted:${userId}:${messageId}`);
     } catch (error) {
       setToast?.(error.message || '訊息刪除失敗', 'error');
     }
@@ -129,7 +154,7 @@ export default function GroupChat({
         </p>
       </div>
 
-      <div className="group-chat-messages" aria-live="polite">
+      <div className="group-chat-messages" aria-live="polite" ref={chatMessagesRef}>
         {isLoading ? (
           <div className="group-chat-loading">聊天室訊息載入中...</div>
         ) : messages.length === 0 ? (
@@ -173,7 +198,6 @@ export default function GroupChat({
             );
           })
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       <div className="group-chat-form">

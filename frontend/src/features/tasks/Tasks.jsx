@@ -41,7 +41,7 @@ function completionMessage(data) {
   return [`${TEXT.taskCompleted}`, `${TEXT.gainedCoins} ${data.coins_added} ${TEXT.coins}`].join('\n');
 }
 
-export default function Tasks({ session, members, tasks, refresh, setToast }) {
+export default function Tasks({ session, members, tasks, refresh, setToast, isLoading = false, hasLoaded = false }) {
   const currentUser = session.user;
   const defaultMember = members[0]?.id || currentUser.id;
   const [form, setForm] = useState({
@@ -79,7 +79,7 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
       }),
     });
     setForm({ title: '', description: '', assigned_to: defaultMember, due_date: '', is_featured: false });
-    setToast(`${TEXT.taskCreated}\n${TEXT.rewardPrefix} ${data.task.coin_reward} ${TEXT.coins}`, 'success');
+    setToast(`${TEXT.taskCreated}\n${TEXT.rewardPrefix} ${data.task.coin_reward} ${TEXT.coins}`, 'success', `task-created:${currentUser.id}:${data.task.id}`);
     refresh();
   }
 
@@ -88,7 +88,7 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
       method: 'PUT',
       body: JSON.stringify({ user_id: currentUser.id, status: TASK_STATUS.DONE }),
     });
-    setToast(data.message || completionMessage(data), 'success');
+    setToast(data.message || completionMessage(data), 'success', `task-completed:${currentUser.id}:${id}`);
     refresh();
   }
 
@@ -99,19 +99,22 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
         method: 'PUT',
         body: JSON.stringify({ user_id: currentUser.id, is_featured: nextValue }),
       });
-      setToast(data.message || (nextValue ? '已設為重點任務' : '已取消重點任務'), 'success');
+      setToast(data.message || (nextValue ? '已設為重點任務' : '已取消重點任務'), 'success', `task-featured:${currentUser.id}:${task.id}:${nextValue}`);
       refresh();
     } catch (err) {
       setToast(err.message || TEXT.setFeaturedFailed, 'error');
     }
   }
 
+  const isInitialLoading = isLoading && !hasLoaded;
+
   return (
     <div className="page-stack">
       <section className="white-card task-section home-card">
         <div className="section-title blue task-page-title"><span /><UiIcon name="check" className="section-icon" />{TEXT.allTasks}</div>
         <div className="task-list-soft">
-          {tasks.map((task) => (
+          {isInitialLoading && <div className="loading-hint">{TEXT.tasksLoading}</div>}
+          {!isInitialLoading && tasks.map((task) => (
             <TaskRow
               task={task}
               key={task.id}
@@ -122,8 +125,8 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
               onToggleFeatured={toggleFeatured}
             />
           ))}
-          {!tasks.length && (
-            <div className="empty-text empty-with-icon">
+          {!isInitialLoading && hasLoaded && !tasks.length && (
+            <div className="empty-text empty-with-icon empty-hint">
               <UiIcon name="sprout" className="empty-icon" />
               <p>{TEXT.noTasks}</p>
             </div>
@@ -134,7 +137,8 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
       <section className="white-card task-section home-card">
         <div className="section-title blue task-page-title"><span /><UiIcon name="flag" className="section-icon" />{TEXT.myTasks}</div>
         <div className="task-list-soft">
-          {myTasks.map((task) => (
+          {isInitialLoading && <div className="loading-hint">{TEXT.myTasksLoading}</div>}
+          {!isInitialLoading && myTasks.map((task) => (
             <TaskRow
               task={task}
               key={task.id}
@@ -145,8 +149,8 @@ export default function Tasks({ session, members, tasks, refresh, setToast }) {
               onToggleFeatured={toggleFeatured}
             />
           ))}
-          {!myTasks.length && (
-            <div className="empty-text empty-with-icon">
+          {!isInitialLoading && hasLoaded && !myTasks.length && (
+            <div className="empty-text empty-with-icon empty-hint">
               <UiIcon name="check" className="empty-icon" />
               <p>{TEXT.noMyTasks}</p>
             </div>

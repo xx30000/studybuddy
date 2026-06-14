@@ -134,7 +134,7 @@ export default function FriendsPage({ session, setToast }) {
   async function requestFriend(receiverId) {
     try {
       const data = await sendFriendRequest(user.id, receiverId);
-      setToast?.(data.message || '已送出好友邀請', 'success');
+      setToast?.(data.message || '已送出好友邀請', 'success', `friend-request-sent:${data.request?.id || Date.now()}`);
       await Promise.all([handleSilentSearch(), loadRequests()]);
     } catch (err) {
       setToast?.(err.message || '送出好友邀請失敗', 'error');
@@ -151,7 +151,7 @@ export default function FriendsPage({ session, setToast }) {
   async function acceptRequest(requestId) {
     try {
       const data = await acceptFriendRequest(requestId);
-      setToast?.(data.message || '已接受好友邀請', 'success');
+      setToast?.(data.message || '已接受好友邀請', 'success', `friend-request-accepted:${requestId}`);
       await refreshAll();
     } catch (err) {
       setToast?.(err.message || '接受好友邀請失敗', 'error');
@@ -161,7 +161,7 @@ export default function FriendsPage({ session, setToast }) {
   async function rejectRequest(requestId) {
     try {
       const data = await rejectFriendRequest(requestId);
-      setToast?.(data.message || '已拒絕好友邀請', 'success');
+      setToast?.(data.message || '已拒絕好友邀請', 'success', `friend-request-rejected:${requestId}`);
       await loadRequests();
     } catch (err) {
       setToast?.(err.message || '拒絕好友邀請失敗', 'error');
@@ -171,7 +171,7 @@ export default function FriendsPage({ session, setToast }) {
   async function cancelRequest(requestId) {
     try {
       const data = await cancelFriendRequest(requestId);
-      setToast?.(data.message || '已取消好友邀請', 'success');
+      setToast?.(data.message || '已取消好友邀請', 'success', `friend-request-canceled:${requestId}`);
       await Promise.all([handleSilentSearch(), loadRequests()]);
     } catch (err) {
       setToast?.(err.message || '取消好友邀請失敗', 'error');
@@ -181,7 +181,7 @@ export default function FriendsPage({ session, setToast }) {
   async function inviteStudy(friendId) {
     try {
       const data = await sendFriendStudyInvite(user.id, friendId);
-      setToast?.(data.message || '已送出一起讀書邀請', 'success');
+      setToast?.(data.message || '已送出一起讀書邀請', 'success', `friend-study-invite-sent:${data.invite?.id || Date.now()}`);
     } catch (err) {
       setToast?.(err.message || '送出一起讀書邀請失敗', 'error');
     }
@@ -190,7 +190,7 @@ export default function FriendsPage({ session, setToast }) {
   async function acceptStudyInvite(inviteId) {
     try {
       const data = await acceptFriendStudyInvite(inviteId);
-      setToast?.(data.message || '已建立好友讀書房', 'success');
+      setToast?.(data.message || '已建立好友讀書房', 'success', `friend-study-invite-accepted:${inviteId}`);
       await loadStudyInvites();
     } catch (err) {
       setToast?.(err.message || '接受一起讀書邀請失敗', 'error');
@@ -200,7 +200,7 @@ export default function FriendsPage({ session, setToast }) {
   async function rejectStudyInvite(inviteId) {
     try {
       const data = await rejectFriendStudyInvite(inviteId);
-      setToast?.(data.message || '已拒絕一起讀書邀請', 'success');
+      setToast?.(data.message || '已拒絕一起讀書邀請', 'success', `friend-study-invite-rejected:${inviteId}`);
       await loadStudyInvites();
     } catch (err) {
       setToast?.(err.message || '拒絕一起讀書邀請失敗', 'error');

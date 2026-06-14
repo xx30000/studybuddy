@@ -93,7 +93,7 @@ export default function StudyMonitor({
     setSelectedTodo(todo);
     setTodoCompletePrompt(null);
     if (todo?.title) {
-      setToast?.('已選擇今日讀書重點', 'success');
+      setToast?.('已選擇今日讀書重點', 'success', `todo-selected:${currentUser.id}:${groupId || 'personal'}:${todo.id}`);
     }
   }
 
@@ -151,7 +151,7 @@ export default function StudyMonitor({
         setSelectedTodo(null);
       }
       setTodoCompletePrompt(null);
-      setToast?.(data.message || '已完成今日代辦', 'success');
+      setToast?.(data.message || '已完成今日代辦', 'success', `todo-completed:${currentUser.id}:${groupId || 'personal'}:${data.todo?.id || todoCompletePrompt.id}`);
     } catch (err) {
       setToast?.(err.message || '更新今日代辦失敗', 'error');
     }
@@ -182,7 +182,7 @@ export default function StudyMonitor({
           end_time: endTime.toISOString(),
         }),
       });
-      setToast?.(data.message || '讀書紀錄已完成', 'success');
+      setToast?.(data.message || '讀書紀錄已完成', 'success', `study-session-completed:${currentUser.id}:${data.session?.id || endTime.getTime()}`);
       onUserCoinsUpdated?.(data.session?.user_coins);
       setTodoCompletePrompt(finishedTodo || null);
       resetTimer();
@@ -246,7 +246,7 @@ export default function StudyMonitor({
         </select>
 
         <div className="study-timer-current">
-          <span className="study-timer-current-label">本次計時目標</span>
+          <span className="study-timer-current-label">目前項目：</span>
           <strong className="study-timer-current-text">{studySubject || '尚未選擇代辦'}</strong>
         </div>
 

@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Flag, Plus, RotateCcw, Trash2 } from 'lucide-react';
 import {
+  checkTodoReminders,
   createTodo,
   deleteTodo,
   getTodos,
@@ -44,6 +45,7 @@ export default function TodayTodoList({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const reminderCheckKeyRef = useRef('');
 
   const activeTodos = useMemo(() => todos.filter((todo) => !todo.is_done), [todos]);
 
@@ -51,6 +53,35 @@ export default function TodayTodoList({
     setTodos(nextTodos);
     onTodosChange?.(nextTodos);
   }
+
+
+
+  async function checkRemindersOnce({ force = false } = {}) {
+    if (!currentUser?.id) return;
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const scopeKey = `${currentUser.id}-${groupId || 'personal'}-${todayKey}`;
+    if (!force && reminderCheckKeyRef.current === scopeKey) return;
+    reminderCheckKeyRef.current = scopeKey;
+
+    try {
+      const data = await checkTodoReminders(currentUser.id, groupId);
+      const createdNotifications = data.created_notifications || [];
+      if (!createdNotifications.length) return;
+
+      createdNotifications.forEach((notification) => {
+        const eventKey = notification.event_key
+          || `${notification.type || 'notification'}:${notification.id || notification.todo_id || notification.title}:${notification.created_at || ''}`;
+        setToast?.(
+          notification.message || notification.title || '你有新的代辦提醒。',
+          'info',
+          eventKey,
+        );
+      });
+    } catch (err) {
+      setToast?.(err.message || '代辦提醒檢查失敗', 'error');
+    }
+  }
+
 
   async function loadTodos({ keepSelection = false } = {}) {
     if (!currentUser?.id) return;
@@ -66,6 +97,7 @@ export default function TodayTodoList({
       if (!list.some((todo) => String(todo.id) === String(selectedTodoId))) {
         onSelectTodo?.(focused || null);
       }
+      await checkRemindersOnce();
     } catch (err) {
       setToast?.(err.message || '今日代辦載入失敗', 'error');
     } finally {
@@ -107,7 +139,8 @@ export default function TodayTodoList({
       setTodoDraft('');
       setDueDraft('');
       onSelectTodo?.(data.todo);
-      setToast?.(data.message || '已新增今日代辦', 'success');
+      setToast?.(data.message || '已新增今日代辦', 'success', `todo-created:${currentUser.id}:${groupId || 'personal'}:${data.todo?.id}`);
+      await checkRemindersOnce({ force: true });
       await loadTodos({ keepSelection: true });
     } catch (err) {
       setToast?.(err.message || '新增今日代辦失敗', 'error');
@@ -124,7 +157,7 @@ export default function TodayTodoList({
       if (String(selectedTodoId) === String(todo.id)) {
         onSelectTodo?.(null);
       }
-      setToast?.(data.message || '今日代辦已更新', 'success');
+      setToast?.(data.message || '今日代辦已更新', 'success', `todo-completed:${currentUser.id}:${groupId || 'personal'}:${todo.id}:${Boolean(data.todo?.is_done)}`);
     } catch (err) {
       setToast?.(err.message || '更新今日代辦失敗', 'error');
     }
@@ -141,7 +174,7 @@ export default function TodayTodoList({
       if (data.todo?.is_focus) {
         onSelectTodo?.(data.todo);
       }
-      setToast?.(data.message || '今日代辦已更新', 'success');
+      setToast?.(data.message || '今日代辦已更新', 'success', `todo-focus:${currentUser.id}:${groupId || 'personal'}:${todo.id}:${Boolean(data.todo?.is_focus)}`);
     } catch (err) {
       setToast?.(err.message || '設定重點代辦失敗', 'error');
     }
@@ -155,7 +188,7 @@ export default function TodayTodoList({
       if (String(selectedTodoId) === String(todo.id)) {
         onSelectTodo?.(null);
       }
-      setToast?.(data.message || '已刪除今日代辦', 'success');
+      setToast?.(data.message || '已刪除今日代辦', 'success', `todo-deleted:${currentUser.id}:${groupId || 'personal'}:${todo.id}`);
     } catch (err) {
       setToast?.(err.message || '刪除今日代辦失敗', 'error');
     }
@@ -166,7 +199,8 @@ export default function TodayTodoList({
     setIsSyncing(true);
     try {
       const data = await syncTasksToTodos(currentUser.id, groupId);
-      setToast?.(data.message || '已同步分派任務', 'success');
+      setToast?.(data.message || '已同步分派任務', 'success', `todo-sync:${currentUser.id}:${groupId}:${data.synced_count || 0}:${Date.now()}`);
+      await checkRemindersOnce({ force: true });
       await loadTodos({ keepSelection: true });
     } catch (err) {
       setToast?.(err.message || '同步任務失敗', 'error');

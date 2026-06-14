@@ -216,13 +216,54 @@ def rows_to_dicts(rows):
     return [dict(row) for row in rows]
 
 
-def create_notification(conn, group_id, title, message, notification_type="system", user_id=None):
-    conn.execute(
+def add_notification_once(
+    conn,
+    user_id,
+    title,
+    message,
+    notification_type="system",
+    event_key=None,
+    related_id=None,
+    group_id=None,
+):
+    if event_key:
+        if user_id is not None:
+            existing = conn.execute(
+                "SELECT id FROM notifications WHERE user_id = ? AND event_key = ? LIMIT 1",
+                (user_id, event_key),
+            ).fetchone()
+        else:
+            existing = conn.execute(
+                "SELECT id FROM notifications WHERE group_id = ? AND user_id IS NULL AND event_key = ? LIMIT 1",
+                (group_id, event_key),
+            ).fetchone()
+        if existing:
+            return {"created": False, "notification": None}
+
+    cur = conn.execute(
         """
-        INSERT INTO notifications (group_id, user_id, title, message, type, is_read, created_at)
-        VALUES (?, ?, ?, ?, ?, 0, ?)
+        INSERT INTO notifications (group_id, user_id, title, message, type, is_read, created_at, event_key, related_id)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
         """,
-        (group_id, user_id, title, message, notification_type, now()),
+        (group_id, user_id, title, message, notification_type, now(), event_key, related_id),
+    )
+    notification_id = getattr(cur, "lastrowid", None)
+    notification = None
+    if notification_id:
+        notification = conn.execute("SELECT * FROM notifications WHERE id = ?", (notification_id,)).fetchone()
+    return {"created": True, "notification": dict(notification) if notification else None}
+
+
+def create_notification(conn, group_id, title, message, notification_type="system", user_id=None, event_key=None, related_id=None):
+    return add_notification_once(
+        conn,
+        user_id,
+        title,
+        message,
+        notification_type,
+        event_key=event_key,
+        related_id=related_id,
+        group_id=group_id,
     )
 
 
@@ -565,6 +606,8 @@ def init_db():
             type TEXT DEFAULT 'system',
             is_read INTEGER DEFAULT 0,
             created_at TEXT NOT NULL,
+            event_key TEXT,
+            related_id INTEGER,
             FOREIGN KEY(group_id) REFERENCES groups(id),
             FOREIGN KEY(user_id) REFERENCES users(id)
         );
@@ -588,6 +631,8 @@ def init_db():
     add_column(conn, "group_members", "joined_at TEXT DEFAULT ''")
     add_column(conn, "group_chat_messages", "is_deleted BOOLEAN DEFAULT FALSE")
     add_column(conn, "group_chat_messages", "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+    add_column(conn, "notifications", "event_key TEXT")
+    add_column(conn, "notifications", "related_id INTEGER")
     add_column(conn, "tasks", "coin_reward INTEGER DEFAULT 20")
     add_column(conn, "tasks", "is_completed INTEGER DEFAULT 0")
     add_column(conn, "tasks", "is_featured INTEGER DEFAULT 0")
@@ -659,6 +704,8 @@ def init_db():
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_passcode_unique ON groups(passcode)")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_group_members_unique ON group_members(group_id, user_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_group_chat_messages_group_created ON group_chat_messages(group_id, created_at)")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_event_key ON notifications(user_id, event_key) WHERE event_key IS NOT NULL AND user_id IS NOT NULL")
+    cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_group_event_key ON notifications(group_id, event_key) WHERE event_key IS NOT NULL AND user_id IS NULL AND group_id IS NOT NULL")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_study_sessions_user_time ON study_sessions(user_id, start_time)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_study_sessions_group_time ON study_sessions(group_id, start_time)")
     cur.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_study_checkins_personal_unique ON study_checkins(user_id, checkin_date) WHERE group_id IS NULL")
@@ -1043,7 +1090,10 @@ def activate_reward_card_if_ready(conn, card):
             "INSERT INTO coin_history (group_id, user_id, amount, reason, type, created_at) VALUES (?, ?, 0, ?, ?, ?)",
             (card["group_id"], card["created_by"], message, "卡牌啟用", now()),
         )
-        create_notification(conn, card["group_id"], "卡牌已啟用", message, "approval")
+        create_notification(
+            conn, card["group_id"], "卡牌已啟用", message, "approval",
+            event_key=f"reward_card:{card['id']}:activated", related_id=card["id"],
+        )
         activated = True
     return approved, required, group_member_count, activated
 
@@ -1092,7 +1142,7 @@ def get_notifications(group_id):
         rows = conn.execute(
             """
             SELECT * FROM notifications
-            WHERE group_id = ? AND (user_id IS NULL OR user_id = ?)
+            WHERE (group_id = ? AND user_id IS NULL) OR user_id = ?
             ORDER BY created_at DESC, id DESC
             """,
             (group_id, user_id),
@@ -1126,7 +1176,7 @@ def mark_all_notifications_read(group_id):
     conn = get_conn()
     if user_id:
         conn.execute(
-            "UPDATE notifications SET is_read = 1 WHERE group_id = ? AND (user_id IS NULL OR user_id = ?)",
+            "UPDATE notifications SET is_read = 1 WHERE (group_id = ? AND user_id IS NULL) OR user_id = ?",
             (group_id, user_id),
         )
     else:
@@ -1505,10 +1555,19 @@ def group_announcements(group_id):
         """,
         (group_id, user_id, content, created_at),
     )
+    announcement_id = cur.lastrowid
     username = get_user_name(conn, user_id)
-    create_notification(conn, group_id, "新增公告", f"{username}發布了一則群組公告。", "system")
+    create_notification(
+        conn,
+        group_id,
+        "新增公告",
+        f"{username}發布了一則群組公告。",
+        "announcement",
+        event_key=f"group:{group_id}:announcement:{announcement_id}",
+        related_id=announcement_id,
+    )
     conn.commit()
-    announcement = fetch_group_announcement(conn, cur.lastrowid)
+    announcement = fetch_group_announcement(conn, announcement_id)
     conn.close()
     return jsonify({
         "success": True,
@@ -1798,6 +1857,7 @@ def create_group_task(group_id):
             created_at,
         ),
     )
+    task_id = cur.lastrowid
     creator_name = get_user_name(conn, created_by)
     assignee_name = get_user_name(conn, assigned_to)
     history_message = f"{creator_name}分派任務「{title}」給{assignee_name}，任務獎勵 {coin_reward} 金幣。"
@@ -1811,9 +1871,12 @@ def create_group_task(group_id):
         "新增任務",
         f"{creator_name}分派了新任務「{title}」給{assignee_name}。",
         "task",
+        assigned_to,
+        event_key=f"task:{task_id}:assigned:{assigned_to}",
+        related_id=task_id,
     )
     conn.commit()
-    task = fetch_task(conn, cur.lastrowid)
+    task = fetch_task(conn, task_id)
     conn.close()
     return jsonify({"success": True, "task": task}), 201
 
@@ -1854,7 +1917,10 @@ def complete_task(task_id):
         "INSERT INTO coin_history (group_id, user_id, amount, reason, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         (task["group_id"], user_id, reward, reason, "任務完成", completed_at),
     )
-    create_notification(conn, task["group_id"], "任務完成", reason, "task")
+    create_notification(
+        conn, task["group_id"], "任務完成", reason, "task", user_id,
+        event_key=f"task:{task_id}:completed:{user_id}", related_id=task_id,
+    )
     conn.commit()
     updated_task = fetch_task(conn, task_id)
     user = conn.execute("SELECT id, coins, coin FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -1979,6 +2045,8 @@ def group_reward_cards(group_id):
         "卡牌申請",
         f"{creator_name}提出新卡牌「{title}」，等待成員同意。",
         "card",
+        event_key=f"reward_card:{card_id}:requested",
+        related_id=card_id,
     )
     card_for_count = conn.execute("SELECT * FROM reward_cards WHERE id = ?", (card_id,)).fetchone()
     approved, required, group_member_count, activated = activate_reward_card_if_ready(conn, card_for_count)
@@ -2081,28 +2149,31 @@ def draw_card(group_id):
         return jsonify({"success": False, "message": "找不到使用者"}), 404
     coins = user["coins"] if user["coins"] is not None else user["coin"]
     if int(coins or 0) < DRAW_COST:
-        create_notification(conn, group_id, "金幣不足", "金幣不足，無法抽卡。", "draw", user_id)
-        conn.commit()
         conn.close()
         return jsonify({"success": False, "message": "金幣不足，無法抽卡"}), 400
 
     drawn_at = now()
     remaining = int(coins or 0) - DRAW_COST
     conn.execute("UPDATE users SET coins = ?, coin = ? WHERE id = ?", (remaining, remaining, user_id))
-    conn.execute(
+    draw_cur = conn.cursor()
+    draw_cur.execute(
         """
         INSERT INTO user_reward_cards (user_id, group_id, reward_card_id, source_task_id, status, obtained_at, used_at)
         VALUES (?, ?, ?, NULL, 'unused', ?, '')
         """,
         (user_id, group_id, drawn["id"], drawn_at),
     )
+    user_reward_card_id = draw_cur.lastrowid
     username = get_user_name(conn, user_id)
     reason = f"{username}花費 {DRAW_COST} 金幣抽卡，抽中「{drawn['title']}」。"
     conn.execute(
         "INSERT INTO coin_history (group_id, user_id, amount, reason, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
         (group_id, user_id, -DRAW_COST, reason, "抽卡", drawn_at),
     )
-    create_notification(conn, group_id, "抽卡成功", reason, "draw")
+    create_notification(
+        conn, group_id, "抽卡成功", reason, "draw", user_id,
+        event_key=f"reward_draw:{user_reward_card_id}", related_id=user_reward_card_id,
+    )
     conn.commit()
     conn.close()
     return jsonify({
@@ -2174,7 +2245,10 @@ def use_user_reward_card(user_reward_card_id):
         "INSERT INTO coin_history (group_id, user_id, amount, reason, type, created_at) VALUES (?, ?, 0, ?, ?, ?)",
         (row["group_id"], row["user_id"], reason, "使用卡牌", used_at),
     )
-    create_notification(conn, row["group_id"], "使用卡牌", reason, "card")
+    create_notification(
+        conn, row["group_id"], "使用卡牌", reason, "card", row["user_id"],
+        event_key=f"reward_card_use:{user_reward_card_id}", related_id=user_reward_card_id,
+    )
     conn.commit()
     conn.close()
     return jsonify({"success": True, "message": "卡牌已使用", "used_at": used_at})
@@ -2455,6 +2529,16 @@ def send_friend_request():
         (requester_id, receiver_id, now()),
     )
     request_id = cur.lastrowid
+    requester_name = get_user_name(conn, requester_id)
+    add_notification_once(
+        conn,
+        receiver_id,
+        "收到好友邀請",
+        f"{requester_name} 想加你為好友。",
+        "system",
+        event_key=f"friend_request:{request_id}",
+        related_id=request_id,
+    )
     conn.commit()
     row = friend_request_rows(conn, "friend_requests.id = ?", (request_id,))[0]
     conn.close()
@@ -2494,6 +2578,16 @@ def accept_friend_request(request_id):
     responded_at = now()
     conn.execute("UPDATE friend_requests SET status = 'accepted', responded_at = ? WHERE id = ?", (responded_at, request_id))
     add_friendship_pair(conn, row["requester_id"], row["receiver_id"])
+    receiver_name = get_user_name(conn, row["receiver_id"])
+    add_notification_once(
+        conn,
+        row["requester_id"],
+        "好友邀請已接受",
+        f"{receiver_name} 已接受你的好友邀請。",
+        "system",
+        event_key=f"friend_request:{request_id}:accepted",
+        related_id=request_id,
+    )
     conn.commit()
     conn.close()
     return jsonify({"success": True, "message": "\u5df2\u6210\u70ba\u597d\u53cb"})
@@ -2662,6 +2756,16 @@ def send_friend_study_invite():
         (inviter_id, invitee_id, created_at, expires_at),
     )
     invite_id = cur.lastrowid
+    inviter_name = get_user_name(conn, inviter_id)
+    add_notification_once(
+        conn,
+        invitee_id,
+        "收到一起讀書邀請",
+        f"{inviter_name} 邀請你一起讀書。",
+        "system",
+        event_key=f"friend_study_invite:{invite_id}",
+        related_id=invite_id,
+    )
     conn.commit()
     row = study_invite_rows(conn, "friend_study_invites.id = ?", (invite_id,))[0]
     conn.close()
@@ -2707,6 +2811,15 @@ def accept_friend_study_invite(invite_id):
         "UPDATE friend_study_invites SET status = 'accepted', room_id = ?, responded_at = ? WHERE id = ?",
         (room_id, created_at, invite_id),
     )
+    add_notification_once(
+        conn,
+        invite["inviter_id"],
+        "一起讀書邀請已接受",
+        f"{invitee_name} 已接受你的一起讀書邀請。",
+        "system",
+        event_key=f"friend_study_invite:{invite_id}:accepted",
+        related_id=invite_id,
+    )
     conn.commit()
     room = conn.execute("SELECT * FROM friend_study_rooms WHERE id = ?", (room_id,)).fetchone()
     conn.close()
@@ -2721,6 +2834,16 @@ def reject_friend_study_invite(invite_id):
         conn.close()
         return jsonify({"success": False, "message": "\u627e\u4e0d\u5230\u9080\u8acb"}), 404
     conn.execute("UPDATE friend_study_invites SET status = 'rejected', responded_at = ? WHERE id = ?", (now(), invite_id))
+    invitee_name = get_user_name(conn, invite["invitee_id"])
+    add_notification_once(
+        conn,
+        invite["inviter_id"],
+        "一起讀書邀請未接受",
+        f"{invitee_name} 目前沒有接受你的一起讀書邀請。",
+        "system",
+        event_key=f"friend_study_invite:{invite_id}:rejected",
+        related_id=invite_id,
+    )
     conn.commit()
     conn.close()
     return jsonify({"success": True, "message": "\u5df2\u62d2\u7d55\u4e00\u8d77\u8b80\u66f8\u9080\u8acb"})
@@ -3205,24 +3328,91 @@ def check_todo_reminders(user_id):
     if error:
         conn.close()
         return error
+
     scope_sql, scope_params = checkin_scope_query(group_id)
     rows = conn.execute(
         f"""
-        SELECT id, title, due_at
+        SELECT id, title, due_at, notified_before_due, notified_on_due, notified_overdue
         FROM study_todos
         WHERE user_id = ? AND {scope_sql} AND is_done = FALSE AND due_at IS NOT NULL
         ORDER BY due_at ASC
         """,
         (user_id, *scope_params),
     ).fetchall()
-    reminders = []
+
+    created_notifications = []
     now_dt = datetime.now()
+    today = now_dt.date()
+
+    def register_reminder(todo, reminder_type, flag_column, title, message):
+        if bool(todo.get(flag_column)):
+            return
+
+        event_key = f"todo:{todo['id']}:{reminder_type}"
+        notification_payload = {
+            "id": None,
+            "event_key": event_key,
+            "title": title,
+            "message": message,
+            "type": "todo",
+            "todo_id": todo["id"],
+        }
+
+        result = create_notification(
+            conn,
+            group_id,
+            title,
+            message,
+            "todo",
+            user_id,
+            event_key=event_key,
+            related_id=todo["id"],
+        )
+        created = bool(result.get("created"))
+        if created and result.get("notification"):
+            notification_payload.update(result["notification"])
+
+        conn.execute(
+            f"UPDATE study_todos SET {flag_column} = TRUE, updated_at = ? WHERE id = ?",
+            (now(), todo["id"]),
+        )
+
+        if created:
+            created_notifications.append(notification_payload)
+
     for row in rows:
         due_dt = todo_due_datetime(row.get("due_at"))
-        if due_dt and due_dt < now_dt:
-            reminders.append({"id": row["id"], "title": row["title"], "type": "overdue"})
+        if not due_dt:
+            continue
+        due_date = due_dt.date()
+        if due_dt < now_dt:
+            register_reminder(
+                row,
+                "overdue",
+                "notified_overdue",
+                "代辦已逾期",
+                f"代辦「{row['title']}」已經逾期，記得安排時間處理。",
+            )
+        elif due_date == today:
+            register_reminder(
+                row,
+                "on_due",
+                "notified_on_due",
+                "代辦今天到期",
+                f"代辦「{row['title']}」今天到期。",
+            )
+        elif (due_date - today).days == 1:
+            register_reminder(
+                row,
+                "before_due",
+                "notified_before_due",
+                "代辦即將到期",
+                f"代辦「{row['title']}」明天到期。",
+            )
+
+    conn.commit()
     conn.close()
-    return jsonify({"success": True, "reminders": reminders})
+    return jsonify({"ok": True, "success": True, "created_notifications": created_notifications})
 
 def validate_checkin_scope(conn, user_id, group_id):
     user = conn.execute("SELECT id, nickname, name, coins, coin FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -3297,7 +3487,6 @@ def create_or_update_checkin():
                 "INSERT INTO coin_history (group_id, user_id, amount, reason, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                 (group_id, user_id, earned_coins, reason, "checkin", created_at),
             )
-            create_notification(conn, group_id, "每日打卡", reason, "coin")
         message = f"今日打卡完成，獲得 {earned_coins} 金幣"
 
     row = conn.execute("SELECT * FROM study_checkins WHERE id = ?", (checkin_id,)).fetchone()
@@ -3490,7 +3679,6 @@ def create_study_session():
             "INSERT INTO coin_history (group_id, user_id, amount, reason, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
             (group_id, user_id, earned_coins, reason, "study", created_at),
         )
-        create_notification(conn, group_id, "讀書完成", reason, "coin")
 
     conn.commit()
     conn.close()

@@ -95,7 +95,7 @@ export default function CheckinCard({
         note: checkinNote,
         study_minutes: finalStudyMinutes,
       });
-      setToast?.(data.message || '今日打卡完成', 'success');
+      setToast?.(data.message || '今日打卡完成', 'success', `checkin-completed:${currentUser.id}:${groupId || 'personal'}:${data.checkin?.checkin_date || new Date().toISOString().slice(0, 10)}`);
       if (data.user_coins !== undefined && data.user_coins !== null) {
         onUserCoinsUpdated?.(data.user_coins);
       }
@@ -131,16 +131,21 @@ export default function CheckinCard({
             <span>天</span>
           </div>
 
-          {todayCheckin && (
-            <div className="checkin-streak">
-              <UiIcon name="star" /> 今天記錄：{todayCheckin.mood || '未選心情'}，讀書 {todayCheckin.study_minutes || 0} 分鐘
-            </div>
-          )}
+          <div className="checkin-summary-row">
+            {todayCheckin && (
+              <div className="checkin-streak checkin-summary-pill">
+                <UiIcon name="star" />
+                <span>今天記錄：{todayCheckin.mood || '普通'}，讀書</span>
+                <strong className="minutes-number">{todayCheckin.study_minutes || 0}</strong>
+                <span>分鐘</span>
+              </div>
+            )}
 
-          <div className="checkin-auto-minutes-card">
-            <span>今日已讀書</span>
-            <strong>{autoTodayStudyMinutes}</strong>
-            <span>分鐘</span>
+            <div className="checkin-auto-minutes-card checkin-summary-pill">
+              <span>今日已讀書</span>
+              <strong className="minutes-number">{autoTodayStudyMinutes}</strong>
+              <span>分鐘</span>
+            </div>
           </div>
 
           {autoTodayStudyMinutes <= 0 && (

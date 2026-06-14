@@ -56,14 +56,14 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
     e.preventDefault();
     if (!form.title.trim()) return setToast('請輸入卡牌名稱', 'error');
 
-    await api(`/groups/${session.group.id}/reward-cards`, {
+    const data = await api(`/groups/${session.group.id}/reward-cards`, {
       method: 'POST',
       body: JSON.stringify({
         ...form,
         created_by: session.user.id,
       }),
     });
-    setToast('卡牌申請已送出', 'success');
+    setToast(data.message || '卡牌申請已送出', 'success', `reward-card-requested:${session.user.id}:${data.card?.id || Date.now()}`);
     setForm({ title: '', description: '', category: '休息獎勵', rarity: '普通' });
     setShowForm(false);
     refresh();
@@ -74,7 +74,7 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
       method: 'POST',
       body: JSON.stringify({ user_id: session.user.id }),
     });
-    setToast(data.message, 'success');
+    setToast(data.message, 'success', `reward-card-approved:${session.user.id}:${card.id}`);
     refresh();
   }
 
@@ -85,7 +85,7 @@ export default function Treasure({ session, rewardCards, refresh, setToast }) {
         body: JSON.stringify({ user_id: session.user.id }),
       });
       setDrawResult(data);
-      setToast(`抽卡成功，抽中「${data.reward_card.title}」`, 'success');
+      setToast(`抽卡成功，抽中「${data.reward_card.title}」`, 'success', `reward-drawn:${session.user.id}:${data.user_reward_card_id || data.reward_card.id}`);
       refresh();
     } catch (err) {
       setToast(err.message, 'error');

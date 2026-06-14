@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BookOpenCheck, Sparkles } from 'lucide-react';
+import { BookOpenCheck, Eye, EyeOff, Sparkles } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { UiIcon } from '../../lib/icons.js';
 
@@ -11,6 +11,9 @@ export default function Login({ onLogin }) {
   const [loginForm, setLoginForm] = useState(emptyLogin);
   const [registerForm, setRegisterForm] = useState(emptyRegister);
   const [message, setMessage] = useState('');
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showRegisterPassword, setShowRegisterPassword] = useState(false);
+  const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
 
   const isRegister = mode === 'register';
 
@@ -101,7 +104,24 @@ export default function Login({ onLogin }) {
             <label className="icon-meta"><UiIcon name="mail" /> Email</label>
             <input type="email" value={loginForm.email} onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })} placeholder="you@example.com" />
             <label className="icon-meta"><UiIcon name="key" /> 密碼</label>
-            <input type="password" value={loginForm.password} onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })} placeholder="請輸入密碼" />
+            <div className="password-input-wrap">
+              <input
+                className="password-input"
+                type={showLoginPassword ? 'text' : 'password'}
+                value={loginForm.password}
+                onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                placeholder="請輸入密碼"
+                autoComplete="current-password"
+              />
+              <button
+                className="password-toggle-button"
+                type="button"
+                onClick={() => setShowLoginPassword((value) => !value)}
+                aria-label={showLoginPassword ? '隱藏密碼' : '顯示密碼'}
+              >
+                {showLoginPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
             <button className="primary-btn" type="submit"><UiIcon name="check" /> 登入</button>
           </form>
         ) : (
@@ -111,9 +131,43 @@ export default function Login({ onLogin }) {
             <label className="icon-meta"><UiIcon name="mail" /> Email</label>
             <input type="email" value={registerForm.email} onChange={(e) => setRegisterForm({ ...registerForm, email: e.target.value })} placeholder="you@example.com" />
             <label className="icon-meta"><UiIcon name="key" /> 密碼</label>
-            <input type="password" value={registerForm.password} onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })} placeholder="請輸入密碼" />
+            <div className="password-input-wrap">
+              <input
+                className="password-input"
+                type={showRegisterPassword ? 'text' : 'password'}
+                value={registerForm.password}
+                onChange={(e) => setRegisterForm({ ...registerForm, password: e.target.value })}
+                placeholder="請輸入密碼"
+                autoComplete="new-password"
+              />
+              <button
+                className="password-toggle-button"
+                type="button"
+                onClick={() => setShowRegisterPassword((value) => !value)}
+                aria-label={showRegisterPassword ? '隱藏密碼' : '顯示密碼'}
+              >
+                {showRegisterPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
             <label className="icon-meta"><UiIcon name="check" /> 確認密碼</label>
-            <input type="password" value={registerForm.confirmPassword} onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })} placeholder="再次輸入密碼" />
+            <div className="password-input-wrap">
+              <input
+                className="password-input"
+                type={showRegisterConfirmPassword ? 'text' : 'password'}
+                value={registerForm.confirmPassword}
+                onChange={(e) => setRegisterForm({ ...registerForm, confirmPassword: e.target.value })}
+                placeholder="再次輸入密碼"
+                autoComplete="new-password"
+              />
+              <button
+                className="password-toggle-button"
+                type="button"
+                onClick={() => setShowRegisterConfirmPassword((value) => !value)}
+                aria-label={showRegisterConfirmPassword ? '隱藏密碼' : '顯示密碼'}
+              >
+                {showRegisterConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
             <button className="primary-btn" type="submit"><UiIcon name="check" /> 註冊</button>
           </form>
         )}

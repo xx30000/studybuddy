@@ -9,7 +9,7 @@ function iconSrc(iconKey) {
 export default function MyVault({ cards, refresh, setToast }) {
   async function useCard(card) {
     await api(`/user-reward-cards/${card.id}/use`, { method: 'PUT' });
-    setToast(`已使用「${card.title}」`, 'success');
+    setToast(`已使用「${card.title}」`, 'success', `reward-card-used:${card.id}`);
     refresh();
   }
 

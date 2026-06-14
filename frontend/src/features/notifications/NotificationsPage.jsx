@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { CheckCheck } from 'lucide-react';
 import { api } from '../../lib/api.js';
 import { notificationIconMap, UiIcon } from '../../lib/icons.js';
@@ -14,6 +14,16 @@ const TYPE_LABELS = {
 };
 
 export default function NotificationsPage({ session, notifications, refreshNotifications, setToast }) {
+  const visibleNotifications = useMemo(() => {
+    const seenEventKeys = new Set();
+    return notifications.filter((notification) => {
+      if (!notification.event_key) return true;
+      if (seenEventKeys.has(notification.event_key)) return false;
+      seenEventKeys.add(notification.event_key);
+      return true;
+    });
+  }, [notifications]);
+
   async function markRead(notification) {
     if (Number(notification.is_read) === 1) return;
     await api(`/notifications/${notification.id}/read`, { method: 'PUT' });
@@ -25,11 +35,11 @@ export default function NotificationsPage({ session, notifications, refreshNotif
       method: 'PUT',
       body: JSON.stringify({ user_id: session.user.id }),
     });
-    setToast('全部通知已標記為已讀', 'success');
+    setToast('全部通知已標記為已讀', 'success', `notifications-read:${session.user.id}:${visibleNotifications.filter((item) => Number(item.is_read) === 0).map((item) => item.id).join('-')}`);
     refreshNotifications();
   }
 
-  const unreadCount = notifications.filter((item) => Number(item.is_read) === 0).length;
+  const unreadCount = visibleNotifications.filter((item) => Number(item.is_read) === 0).length;
 
   return (
     <div className="page-stack">
@@ -45,7 +55,7 @@ export default function NotificationsPage({ session, notifications, refreshNotif
 
       <section className="white-card notification-section home-card">
         <div className="notification-list">
-          {notifications.map((notification) => {
+          {visibleNotifications.map((notification) => {
             const unread = Number(notification.is_read) === 0;
             return (
               <article
@@ -71,7 +81,7 @@ export default function NotificationsPage({ session, notifications, refreshNotif
               </article>
             );
           })}
-          {!notifications.length && (
+          {!visibleNotifications.length && (
             <div className="empty-text empty-with-icon">
               <UiIcon name="bell" className="empty-icon" />
               <p>目前還沒有通知</p>

@@ -35,6 +35,7 @@ export const notificationIconMap = {
   draw: iconMap.star,
   approval: iconMap.heart,
   announcement: iconMap.announcement,
+  todo: iconMap.taskList,
   system: iconMap.bell,
 };
 

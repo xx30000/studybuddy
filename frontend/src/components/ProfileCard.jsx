@@ -81,7 +81,7 @@ export function GroupNameHeader({ session, groupInfo, refresh, onGroupUpdated, s
           name: nextName,
         }),
       });
-      setToast?.(data.message || TEXT.groupNameUpdated, 'success');
+      setToast?.(data.message || TEXT.groupNameUpdated, 'success', `group-name-updated:${session.user.id}:${group.id}:${Date.now()}`);
       setIsEditingGroupName(false);
       setGroupNameDraft('');
       onGroupUpdated?.(data.group);
@@ -140,6 +140,8 @@ export function GroupAnnouncementPanel({
   refreshAnnouncements,
   refresh,
   setToast,
+  isLoading = false,
+  hasLoaded = false,
 }) {
   const group = getGroup(session, groupInfo);
   const members = getMembers(session, groupInfo);
@@ -161,7 +163,7 @@ export function GroupAnnouncementPanel({
           content: announcementDraft,
         }),
       });
-      setToast?.(data.message || TEXT.announcementPublished, 'success');
+      setToast?.(data.message || TEXT.announcementPublished, 'success', `announcement-published:${session.user.id}:${data.announcement?.id || Date.now()}`);
       setAnnouncementDraft('');
       setIsAnnouncementEditorOpen(false);
       await refreshAnnouncements?.();
@@ -177,7 +179,7 @@ export function GroupAnnouncementPanel({
         method: 'DELETE',
         body: JSON.stringify({ user_id: session.user.id }),
       });
-      setToast?.(data.message || TEXT.announcementDeleted, 'success');
+      setToast?.(data.message || TEXT.announcementDeleted, 'success', `announcement-deleted:${session.user.id}:${announcementId}`);
       await refreshAnnouncements?.();
       refresh?.();
     } catch (err) {
@@ -229,6 +231,9 @@ export function GroupAnnouncementPanel({
         )}
 
         <div className="announcement-list">
+          {isLoading && announcements.length === 0 && (
+            <div className="loading-hint">{TEXT.announcementsLoading}</div>
+          )}
           {announcements.map((announcement, index) => (
             <article className="announcement-note announcement-card" key={announcement.id}>
               <span className="announcement-index">{index + 1}.</span>
@@ -254,8 +259,8 @@ export function GroupAnnouncementPanel({
               </div>
             </article>
           ))}
-          {!announcements.length && (
-            <div className="empty-text empty-with-icon">
+          {!isLoading && hasLoaded && !announcements.length && (
+            <div className="empty-text empty-with-icon empty-hint">
               <UiIcon name="message" className="empty-icon" />
               <p>{TEXT.noAnnouncements}</p>
             </div>
