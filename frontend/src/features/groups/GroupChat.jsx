@@ -20,7 +20,7 @@ function formatChatTime(value) {
 }
 
 function avatarLabel(name) {
-  return (name || '用').trim().slice(0, 1);
+  return (name || '你').trim().slice(0, 1);
 }
 
 function isChatNearBottom(chatBox) {
@@ -47,8 +47,13 @@ export default function GroupChat({
   const [isSending, setIsSending] = useState(false);
   const [shouldAutoScroll, setShouldAutoScroll] = useState(false);
   const chatMessagesRef = useRef(null);
+  const setToastRef = useRef(setToast);
 
   const announcementText = latestAnnouncement?.content || currentGroup?.announcement || '';
+
+  useEffect(() => {
+    setToastRef.current = setToast;
+  }, [setToast]);
 
   const loadMessages = useCallback(async (showLoading = false) => {
     if (!groupId || !userId) {
@@ -67,18 +72,23 @@ export default function GroupChat({
         setShouldAutoScroll(true);
       }
     } catch (error) {
-      setToast?.(error.message || '聊天室訊息載入失敗', 'error');
+      setToastRef.current?.(error.message || '聊天室訊息載入失敗', 'error');
     } finally {
       if (showLoading) setIsLoading(false);
     }
-  }, [groupId, userId, setToast]);
+  }, [groupId, userId]);
 
   useEffect(() => {
+    if (!groupId || !userId) {
+      setMessages([]);
+      return undefined;
+    }
+
     loadMessages(true);
-    if (!groupId || !userId) return undefined;
     const timer = window.setInterval(() => {
       loadMessages(false);
-    }, 25000);
+    }, 30000);
+
     return () => window.clearInterval(timer);
   }, [groupId, userId, loadMessages]);
 
@@ -91,11 +101,11 @@ export default function GroupChat({
   async function handleSend() {
     const message = draft.trim();
     if (!message) {
-      setToast?.('訊息不可空白', 'error');
+      setToastRef.current?.('訊息不可空白', 'error');
       return;
     }
     if (message.length > 500) {
-      setToast?.('訊息最多 500 字', 'error');
+      setToastRef.current?.('訊息最多 500 字', 'error');
       return;
     }
     setIsSending(true);
@@ -109,7 +119,7 @@ export default function GroupChat({
         await loadMessages(false);
       }
     } catch (error) {
-      setToast?.(error.message || '訊息送出失敗', 'error');
+      setToastRef.current?.(error.message || '訊息送出失敗', 'error');
     } finally {
       setIsSending(false);
     }
@@ -130,9 +140,9 @@ export default function GroupChat({
       if (wasNearBottom) {
         setShouldAutoScroll(true);
       }
-      setToast?.('訊息已刪除', 'success', `chat-message-deleted:${userId}:${messageId}`);
+      setToastRef.current?.('訊息已刪除', 'success', `chat-message-deleted:${userId}:${messageId}`);
     } catch (error) {
-      setToast?.(error.message || '訊息刪除失敗', 'error');
+      setToastRef.current?.(error.message || '訊息刪除失敗', 'error');
     }
   }
 
@@ -150,7 +160,7 @@ export default function GroupChat({
       <div className="group-chat-announcement">
         <span className="group-chat-announcement-label">公告提醒</span>
         <p className="group-chat-announcement-content">
-          {announcementText || '目前尚未設定群組公告'}
+          {announcementText || '目前沒有群組公告。'}
         </p>
       </div>
 
@@ -178,7 +188,7 @@ export default function GroupChat({
                 <div className="group-chat-bubble">
                   <div className="group-chat-meta">
                     <span className="group-chat-name">
-                      {mine ? '我' : message.display_name || '使用者'}
+                      {mine ? '你' : message.display_name || '夥伴'}
                     </span>
                     <span className="group-chat-time">{formatChatTime(message.created_at)}</span>
                     {mine && (

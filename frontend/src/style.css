@@ -8681,3 +8681,48 @@ body.theme-green .theme-option.active {
     font-size: 18px !important;
   }
 }
+
+/* Scroll stability and local performance guards */
+html,
+body,
+#root {
+  min-height: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  scroll-behavior: auto !important;
+}
+
+body {
+  overflow-y: auto !important;
+  overscroll-behavior-y: auto;
+}
+
+.cloud-page,
+.phone-shell,
+.home-layout-center,
+.notebook-page,
+.main-content,
+.dashboard-page,
+.study-home,
+.stats-page,
+.settings-page {
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+}
+
+.cloud-page {
+  overflow-y: visible !important;
+}
+
+.horizontal-timeline-scroll {
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  overscroll-behavior-x: contain;
+  overscroll-behavior-y: auto;
+  touch-action: pan-x pan-y;
+}
+
+.group-chat-messages {
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
