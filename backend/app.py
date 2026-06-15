@@ -3764,6 +3764,16 @@ def last_seven_dates():
     today = datetime.now().date()
     return [today - timedelta(days=offset) for offset in range(6, -1, -1)]
 
+def current_week_dates(base_date=None):
+    if base_date is None:
+        base_date = datetime.now().date()
+    elif isinstance(base_date, datetime):
+        base_date = base_date.date()
+    diff_to_monday = base_date.weekday()
+    monday = base_date - timedelta(days=diff_to_monday)
+    return [monday + timedelta(days=offset) for offset in range(7)]
+
+
 
 def week_bounds():
     start, end = date_range("week")
@@ -3794,44 +3804,29 @@ def user_study_minutes_by_day(conn, user_id, group_id, dates):
     session_rows = conn.execute(
         f"""
         SELECT DATE(start_time) AS study_date,
-               COALESCE(SUM(duration_minutes), 0) AS minutes
+               COALESCE(SUM(COALESCE(duration_minutes, FLOOR(duration_seconds / 60))), 0) AS minutes
         FROM study_sessions
         WHERE user_id = ? AND {scope_sql} AND start_time >= ? AND start_time < ?
         GROUP BY DATE(start_time)
         """,
         (user_id, *scope_params, start, end),
     ).fetchall()
-    session_dates = set()
     for row in session_rows:
         key = normalize_date_key(row["study_date"])
         if key in result:
             result[key] = int(row["minutes"] or 0)
-            session_dates.add(key)
-
-    check_scope_sql, check_scope_params = group_scope_condition(group_id)
-    checkin_rows = conn.execute(
-        f"""
-        SELECT checkin_date,
-               COALESCE(study_minutes, 0) AS minutes
-        FROM study_checkins
-        WHERE user_id = ? AND {check_scope_sql} AND checkin_date >= ? AND checkin_date <= ?
-        """,
-        (user_id, *check_scope_params, date_keys[0], date_keys[-1]),
-    ).fetchall()
-    for row in checkin_rows:
-        key = normalize_date_key(row["checkin_date"])
-        if key in result and key not in session_dates:
-            result[key] = int(row["minutes"] or 0)
-    return [{"date": key, "minutes": result[key]} for key in date_keys]
-
+    return [
+        {"date": key, "minutes": result[key], "totalMinutes": result[key]}
+        for key in date_keys
+    ]
 
 def weekday_label(date_value):
-    labels = ["一", "二", "三", "四", "五", "六", "日"]
+    labels = ["一","二","三","四","五","六","日"]
     return labels[date_value.weekday()]
 
 
 def user_checkin_week_rows(conn, user_id, group_id):
-    dates = last_seven_dates()
+    dates = current_week_dates()
     date_keys = [date.isoformat() for date in dates]
     scope_sql, scope_params = checkin_scope_query(group_id)
     rows = conn.execute(
@@ -3846,7 +3841,9 @@ def user_checkin_week_rows(conn, user_id, group_id):
     return [
         {
             "day": weekday_label(date),
+            "weekday": weekday_label(date),
             "date": date.isoformat(),
+            "label": date.strftime("%m/%d"),
             "checked": date.isoformat() in checked_dates,
         }
         for date in dates
@@ -4028,25 +4025,41 @@ def get_user_coin_stats(user_id):
         return jsonify({"success": False, "message": "只有群組成員可以查看此統計"}), 403
     current_coins = int((user["coins"] if user["coins"] is not None else user["coin"]) or 0)
     coin_scope_sql, coin_scope_params = group_scope_condition(group_id)
+    dates = last_seven_dates()
+    start = datetime.combine(dates[0], datetime.min.time()).strftime("%Y-%m-%d %H:%M:%S")
+    end = (datetime.combine(dates[-1], datetime.min.time()) + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
     rows = conn.execute(
         f"""
         SELECT amount, created_at
         FROM coin_history
-        WHERE user_id = ? AND {coin_scope_sql}
-        ORDER BY created_at DESC, id DESC
-        LIMIT 10
+        WHERE user_id = ? AND {coin_scope_sql} AND created_at >= ? AND created_at < ?
+        ORDER BY created_at ASC, id ASC
         """,
-        (user_id, *coin_scope_params),
+        (user_id, *coin_scope_params, start, end),
     ).fetchall()
-    ordered = list(reversed(rows))
-    total_delta = sum(int(row["amount"] or 0) for row in ordered)
-    running = current_coins - total_delta
-    points = []
-    for row in ordered:
-        running += int(row["amount"] or 0)
-        points.append({"date": normalize_date_key(row["created_at"]), "coins": running})
-    if not points:
-        points = [{"date": datetime.now().date().isoformat(), "coins": current_coins}]
+    delta_by_date = {date.isoformat(): 0 for date in dates}
+    for row in rows:
+        key = normalize_date_key(row["created_at"])
+        if key in delta_by_date:
+            delta_by_date[key] += int(row["amount"] or 0)
+
+    balance = current_coins
+    end_balance_by_date = {}
+    for date in reversed(dates):
+        key = date.isoformat()
+        end_balance_by_date[key] = balance
+        balance -= delta_by_date.get(key, 0)
+
+    points = [
+        {
+            "date": date.isoformat(),
+            "label": date.strftime("%m/%d"),
+            "total_coins": int(end_balance_by_date[date.isoformat()] or 0),
+            "totalCoins": int(end_balance_by_date[date.isoformat()] or 0),
+            "coins": int(end_balance_by_date[date.isoformat()] or 0),
+        }
+        for date in dates
+    ]
     conn.close()
     return jsonify({"success": True, "points": points})
 
@@ -4297,7 +4310,7 @@ def get_group_checkin_week_stats(group_id):
     if not group:
         conn.close()
         return jsonify({"success": False, "message": "找不到群組"}), 404
-    dates = last_seven_dates()
+    dates = current_week_dates()
     date_keys = [date.isoformat() for date in dates]
     member_count = conn.execute("SELECT COUNT(*) AS c FROM group_members WHERE group_id = ?", (group_id,)).fetchone()["c"]
     rows = conn.execute(
@@ -4313,7 +4326,9 @@ def get_group_checkin_week_stats(group_id):
     result = [
         {
             "day": weekday_label(date),
+            "weekday": weekday_label(date),
             "date": date.isoformat(),
+            "label": date.strftime("%m/%d"),
             "checked_count": checked_map.get(date.isoformat(), 0),
             "member_count": int(member_count or 0),
             "checked": bool(checked_map.get(date.isoformat(), 0)),

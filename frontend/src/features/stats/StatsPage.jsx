@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -34,13 +34,74 @@ function shortDate(value) {
   return parts.length === 2 ? `${parts[0]}/${parts[1]}` : String(value);
 }
 
+function localDateKey(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function localMonthDay(date) {
+  return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function getCurrentWeekRange(baseDate = new Date()) {
+  const date = new Date(baseDate);
+  date.setHours(0, 0, 0, 0);
+
+  const day = date.getDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + diffToMonday);
+  monday.setHours(0, 0, 0, 0);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  sunday.setHours(23, 59, 59, 999);
+
+  return { monday, sunday };
+}
+
+function getWeekDays(monday) {
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(monday);
+    date.setDate(monday.getDate() + index);
+    return date;
+  });
+}
+
+function localWeekdayLabel(date) {
+  return ['週日', '週一', '週二', '週三', '週四', '週五', '週六'][date.getDay()];
+}
+
+function buildCurrentWeekCheckinRows(rows, type = 'personal') {
+  const safeRows = Array.isArray(rows) ? rows : [];
+  const { monday } = getCurrentWeekRange();
+  const days = getWeekDays(monday);
+  const rowsByDate = new Map(safeRows.map((row) => [String(row?.date || '').slice(0, 10), row]));
+
+  return days.map((date) => {
+    const dateKey = localDateKey(date);
+    const source = rowsByDate.get(dateKey) || {};
+    const checkedCount = Number(source.checked_count || 0);
+    const memberCount = Number(source.member_count || 0);
+    return {
+      ...source,
+      date: dateKey,
+      label: localMonthDay(date),
+      day: localWeekdayLabel(date),
+      weekday: localWeekdayLabel(date),
+      checked: type === 'group' ? checkedCount > 0 : Boolean(source.checked),
+      checked_count: checkedCount,
+      member_count: memberCount,
+    };
+  });
+}
+
 function toDateValue(value) {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
-}
-
-function chartHasData(rows, key) {
-  return Array.isArray(rows) && rows.some((row) => Number(row?.[key] || 0) > 0);
 }
 
 function taskStatusLabel(status) {
@@ -70,27 +131,16 @@ function minutesLabel(totalMinutes) {
   const safeMinutes = Math.max(0, Number(totalMinutes || 0));
   const hours = Math.floor(safeMinutes / 60);
   const minutes = safeMinutes % 60;
-  if (hours <= 0) return `${minutes} ??`;
-  if (minutes <= 0) return `${hours} ??`;
-  return `${hours} ?? ${minutes} ??`;
+  if (hours <= 0) return `${minutes} 分鐘`;
+  if (minutes <= 0) return `${hours} 小時`;
+  return `${hours} 小時 ${minutes} 分鐘`;
 }
-
 function timelineTimeLabel(minutes) {
   const safeMinutes = Math.max(0, Math.min(1440, Number(minutes || 0)));
   if (safeMinutes === 1440) return '24:00';
   const hour = Math.floor(safeMinutes / 60);
   const minute = safeMinutes % 60;
   return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
-
-function buildDisplayHours(sessions) {
-  const earliest = sessions.reduce((min, session) => Math.min(min, Number(session.start_minutes || 1440)), 1440);
-  const start = earliest < 540 ? 0 : 540;
-  const hours = [];
-  for (let minute = start; minute <= 1440; minute += 60) {
-    hours.push(minute);
-  }
-  return { start, end: 1440, hours };
 }
 
 function SummaryGrid({ items }) {
@@ -109,41 +159,81 @@ function SummaryGrid({ items }) {
 }
 
 function StudyWeekChart({ rows }) {
+  const chartRows = Array.isArray(rows)
+    ? rows.map((item) => ({
+      ...item,
+      label: shortDate(item.date),
+      totalMinutes: Number(item.totalMinutes ?? item.minutes ?? 0),
+    }))
+    : [];
+
   return (
     <div className="stats-chart-card">
       <h3 className="stats-chart-title">近 7 天讀書時間</h3>
-      {chartHasData(rows, 'minutes') ? (
+      {chartRows.length > 0 ? (
         <div className="stats-chart-wrapper">
           <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={rows.map((item) => ({ ...item, label: shortDate(item.date) }))}>
+            <LineChart data={chartRows} margin={{ top: 12, right: 18, bottom: 4, left: 0 }}>
               <CartesianGrid strokeDasharray="4 4" stroke="#ddd3c8" />
               <XAxis dataKey="label" />
-              <YAxis unit="分" />
-              <Tooltip />
-              <Bar dataKey="minutes" fill="#8fa3d2" radius={[8, 8, 0, 0]} />
-            </BarChart>
+              <YAxis unit="分" allowDecimals={false} />
+              <Tooltip formatter={(value) => [`${value} 分鐘`, '讀書時間']} labelFormatter={(label) => `日期：${label}`} />
+              <Line
+                type="monotone"
+                dataKey="totalMinutes"
+                stroke="var(--theme-primary-dark, #1f3f73)"
+                strokeWidth={3}
+                dot={{ r: 4, strokeWidth: 2, fill: '#ffffff' }}
+                activeDot={{ r: 6 }}
+                connectNulls
+              />
+            </LineChart>
           </ResponsiveContainer>
         </div>
       ) : (
-        <p className="stats-empty">尚未有足夠資料，完成讀書計時或打卡後就會產生統計。</p>
+        <p className="stats-empty">統計資料載入完成後，這裡會顯示最近 7 天每日讀書總時長。</p>
       )}
     </div>
   );
 }
 
 function CoinTrendChart({ rows }) {
+  const chartRows = useMemo(() => {
+    const dailyMap = new Map();
+    const safeRows = Array.isArray(rows) ? rows : [];
+    safeRows.forEach((item, index) => {
+      const dateKey = String(item?.date || item?.label || `#${index + 1}`).slice(0, 10);
+      const label = item?.label || (item?.date ? shortDate(item.date) : `#${index + 1}`);
+      dailyMap.set(dateKey, {
+        ...item,
+        date: dateKey,
+        label,
+        totalCoins: Number(item?.totalCoins ?? item?.total_coins ?? item?.coins ?? 0),
+      });
+    });
+    return Array.from(dailyMap.values()).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  }, [rows]);
+
   return (
     <div className="stats-chart-card">
       <h3 className="stats-chart-title">金幣變化趨勢</h3>
-      {rows.length > 0 ? (
+      {chartRows.length > 0 ? (
         <div className="stats-chart-wrapper">
           <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={rows.map((item, index) => ({ ...item, label: item.date ? shortDate(item.date) : `#${index + 1}` }))}>
+            <LineChart data={chartRows}>
               <CartesianGrid strokeDasharray="4 4" stroke="#ddd3c8" />
               <XAxis dataKey="label" />
-              <YAxis />
-              <Tooltip />
-              <Line type="monotone" dataKey="coins" stroke="#1f3f73" strokeWidth={3} dot={{ r: 4 }} />
+              <YAxis allowDecimals={false} />
+              <Tooltip formatter={(value) => [`${value} 枚`, '總金幣']} labelFormatter={(label) => `日期：${label}`} />
+              <Line
+                type="monotone"
+                dataKey="totalCoins"
+                stroke="var(--theme-primary-dark, #1f3f73)"
+                strokeWidth={3}
+                dot={{ r: 4, strokeWidth: 2, fill: '#ffffff' }}
+                activeDot={{ r: 6 }}
+                connectNulls
+              />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -154,17 +244,28 @@ function CoinTrendChart({ rows }) {
   );
 }
 
+function checkinWeekRangeLabel(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return '';
+  return `${shortDate(rows[0].date)} - ${shortDate(rows[rows.length - 1].date)}`;
+}
+
 function CheckinWeek({ rows, title = '本週打卡紀錄' }) {
+  const displayRows = useMemo(() => buildCurrentWeekCheckinRows(rows, 'personal'), [rows]);
+  const weekRangeLabel = checkinWeekRangeLabel(displayRows);
+
   return (
     <div className="stats-chart-card checkin-week-card">
-      <h3 className="stats-chart-title">{title}</h3>
-      {rows.length > 0 ? (
+      <div className="checkin-week-heading">
+        <h3 className="stats-chart-title">{title}</h3>
+        {weekRangeLabel && <small className="checkin-week-range">{weekRangeLabel}</small>}
+      </div>
+      {displayRows.length > 0 ? (
         <div className="checkin-week-row">
-          {rows.map((day) => (
+          {displayRows.map((day) => (
             <div className="checkin-week-day" key={day.date}>
               <span className={`checkin-week-dot ${day.checked ? 'done' : 'missed'}`}>{day.checked ? '✓' : ''}</span>
-              <strong>{day.weekday || shortDate(day.date)}</strong>
-              <small>{shortDate(day.date)}</small>
+              <strong>{day.weekday || day.day || shortDate(day.date)}</strong>
+              <small>{day.label || shortDate(day.date)}</small>
             </div>
           ))}
         </div>
@@ -176,16 +277,22 @@ function CheckinWeek({ rows, title = '本週打卡紀錄' }) {
 }
 
 function GroupCheckinWeek({ rows }) {
+  const displayRows = useMemo(() => buildCurrentWeekCheckinRows(rows, 'group'), [rows]);
+  const weekRangeLabel = checkinWeekRangeLabel(displayRows);
+
   return (
     <div className="stats-chart-card checkin-week-card">
-      <h3 className="stats-chart-title">群組本週打卡</h3>
-      {rows.length > 0 ? (
+      <div className="checkin-week-heading">
+        <h3 className="stats-chart-title">群組本週打卡</h3>
+        {weekRangeLabel && <small className="checkin-week-range">{weekRangeLabel}</small>}
+      </div>
+      {displayRows.length > 0 ? (
         <div className="group-checkin-week-list">
-          {rows.map((day) => (
+          {displayRows.map((day) => (
             <div className="group-checkin-week-item" key={day.date}>
               <div>
-                <strong>{day.weekday || shortDate(day.date)}</strong>
-                <small>{shortDate(day.date)}</small>
+                <strong>{day.weekday || day.day || shortDate(day.date)}</strong>
+                <small>{day.label || shortDate(day.date)}</small>
               </div>
               <span>{day.checked_count || 0} / {day.member_count || 0} 人</span>
             </div>
@@ -237,12 +344,51 @@ function TaskTimeline({ tasks, title }) {
 
 function DailyStudySchedule({ sessions }) {
   const safeSessions = Array.isArray(sessions) ? sessions : [];
-  const { start, end, hours } = useMemo(() => buildDisplayHours(safeSessions), [safeSessions]);
+  const timelineScrollRef = useRef(null);
+  const dragStateRef = useRef({ isDragging: false, startX: 0, scrollLeft: 0 });
   const totalMinutes = safeSessions.reduce((sum, session) => sum + Number(session.duration_minutes || 0), 0);
-  const displayTotal = Math.max(60, end - start);
+  const hourWidth = 90;
+  const dayTotalMinutes = 24 * 60;
+  const timelineWidth = 24 * hourWidth;
+  const minBlockWidth = 80;
+  const hours = useMemo(() => Array.from({ length: 25 }, (_, hour) => hour * 60), []);
+
+  function clampMinute(value, fallback = 0) {
+    const minute = Number(value);
+    if (!Number.isFinite(minute)) return fallback;
+    return Math.max(0, Math.min(dayTotalMinutes, minute));
+  }
+
+  function handleTimelinePointerDown(event) {
+    if (event.pointerType !== 'mouse' || !timelineScrollRef.current) return;
+    dragStateRef.current = {
+      isDragging: true,
+      startX: event.clientX,
+      scrollLeft: timelineScrollRef.current.scrollLeft,
+    };
+    timelineScrollRef.current.classList.add('dragging');
+    timelineScrollRef.current.setPointerCapture?.(event.pointerId);
+  }
+
+  function handleTimelinePointerMove(event) {
+    const dragState = dragStateRef.current;
+    if (!dragState.isDragging || !timelineScrollRef.current) return;
+    event.preventDefault();
+    const walk = event.clientX - dragState.startX;
+    timelineScrollRef.current.scrollLeft = dragState.scrollLeft - walk;
+  }
+
+  function stopTimelineDrag(event) {
+    if (!dragStateRef.current.isDragging) return;
+    dragStateRef.current.isDragging = false;
+    timelineScrollRef.current?.classList.remove('dragging');
+    if (event?.pointerId !== undefined) {
+      timelineScrollRef.current?.releasePointerCapture?.(event.pointerId);
+    }
+  }
 
   return (
-    <section className="stats-chart-card daily-schedule-card">
+    <section className="stats-chart-card daily-schedule-card today-timeline-card">
       <div className="daily-schedule-header">
         <div>
           <h3 className="daily-schedule-title">今日讀書時間線</h3>
@@ -253,42 +399,69 @@ function DailyStudySchedule({ sessions }) {
 
       {safeSessions.length > 0 ? (
         <>
-          <div className="daily-schedule-body" style={{ minHeight: `${Math.max(420, hours.length * 48)}px` }}>
-            <div className="daily-schedule-time-column">
-              {hours.map((minute) => (
-                <span
-                  className="daily-schedule-time-label"
-                  key={minute}
-                  style={{ top: `${((minute - start) / displayTotal) * 100}%` }}
-                >
-                  {timelineTimeLabel(minute)}
-                </span>
-              ))}
-            </div>
-            <div className="daily-schedule-grid">
-              {hours.map((minute) => (
-                <span
-                  className="daily-schedule-hour-line"
-                  key={minute}
-                  style={{ top: `${((minute - start) / displayTotal) * 100}%` }}
-                />
-              ))}
-              {safeSessions.map((session) => {
-                const clippedStart = Math.max(start, Number(session.start_minutes || start));
-                const clippedEnd = Math.min(end, Math.max(clippedStart + 10, Number(session.end_minutes || clippedStart + Number(session.duration_minutes || 10))));
-                const top = ((clippedStart - start) / displayTotal) * 100;
-                const height = Math.max(6, ((clippedEnd - clippedStart) / displayTotal) * 100);
-                return (
-                  <div
-                    className="daily-schedule-segment"
-                    key={session.id}
-                    style={{ top: `${top}%`, height: `${height}%` }}
-                    title={`${session.start_time} - ${session.end_time}，${minutesLabel(session.duration_minutes)}`}
+          <div
+            className="horizontal-timeline-scroll"
+            ref={timelineScrollRef}
+            role="region"
+            aria-label="今日橫向讀書時間線"
+            onPointerDown={handleTimelinePointerDown}
+            onPointerMove={handleTimelinePointerMove}
+            onPointerUp={stopTimelineDrag}
+            onPointerCancel={stopTimelineDrag}
+            onPointerLeave={stopTimelineDrag}
+          >
+            <div className="horizontal-timeline-inner" style={{ width: `${timelineWidth}px` }}>
+              <div className="horizontal-time-axis" aria-hidden="true">
+                {hours.map((minute) => (
+                  <span
+                    className="horizontal-time-label"
+                    key={minute}
+                    style={{ left: `${(minute / dayTotalMinutes) * timelineWidth}px` }}
                   >
-                    <span className="daily-schedule-segment-label">讀書 {minutesLabel(session.duration_minutes)}</span>
-                  </div>
-                );
-              })}
+                    {timelineTimeLabel(minute)}
+                  </span>
+                ))}
+              </div>
+
+              <div className="horizontal-timeline-track">
+                {hours.map((minute) => (
+                  <span
+                    className="horizontal-hour-line"
+                    key={minute}
+                    style={{ left: `${(minute / dayTotalMinutes) * timelineWidth}px` }}
+                  />
+                ))}
+
+                {safeSessions.map((session) => {
+                  const rawStart = clampMinute(session.start_minutes, 0);
+                  const fallbackEnd = rawStart + Number(session.duration_minutes || 0);
+                  const rawEnd = clampMinute(session.end_minutes, fallbackEnd);
+                  const endMinute = Math.max(rawStart + 1, rawEnd);
+                  const duration = Math.max(1, Number(session.duration_minutes || endMinute - rawStart));
+                  const calculatedLeft = (rawStart / dayTotalMinutes) * timelineWidth;
+                  const calculatedWidth = ((Math.min(dayTotalMinutes, endMinute) - rawStart) / dayTotalMinutes) * timelineWidth;
+                  const blockLeft = Math.min(calculatedLeft, timelineWidth - minBlockWidth);
+                  const blockWidth = Math.min(
+                    Math.max(calculatedWidth, minBlockWidth),
+                    timelineWidth - blockLeft,
+                  );
+                  const subject = session.subject || '讀書';
+                  const label = subject && subject !== '讀書'
+                    ? `${subject}｜${minutesLabel(duration)}`
+                    : `讀書 ${minutesLabel(duration)}`;
+
+                  return (
+                    <div
+                      className="horizontal-study-block"
+                      key={session.id}
+                      style={{ left: `${blockLeft}px`, width: `${blockWidth}px` }}
+                      title={`${session.start_time} - ${session.end_time}，${label}`}
+                    >
+                      <span className="horizontal-study-block-label">{label}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 

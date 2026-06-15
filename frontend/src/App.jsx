@@ -739,6 +739,16 @@ export default function App() {
           onGroupUpdated={updateCurrentGroup}
           setToast={showToast}
         />
+        <GroupAnnouncementPanel
+          session={session}
+          groupInfo={groupInfo}
+          announcements={announcements}
+          refreshAnnouncements={refreshAnnouncements}
+          refresh={refresh}
+          setToast={showToast}
+          isLoading={announcementsLoadState.isLoading}
+          hasLoaded={announcementsLoadState.hasLoaded}
+        />
         <TopMessage />
         <StudyMonitor
           session={session}
@@ -753,16 +763,6 @@ export default function App() {
           refresh={refresh}
           setToast={showToast}
           onUserCoinsUpdated={updateUserCoins}
-        />
-        <GroupAnnouncementPanel
-          session={session}
-          groupInfo={groupInfo}
-          announcements={announcements}
-          refreshAnnouncements={refreshAnnouncements}
-          refresh={refresh}
-          setToast={showToast}
-          isLoading={announcementsLoadState.isLoading}
-          hasLoaded={announcementsLoadState.hasLoaded}
         />
         <ProfileCard
           session={session}
